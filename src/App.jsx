@@ -18,6 +18,7 @@ import BadgePrint from './pages/BadgePrint.jsx';
 import Records from './pages/Records.jsx';
 import Reports from './pages/Reports.jsx';
 import Schedule from './pages/Schedule.jsx';
+import QrGenerator from './pages/QrGenerator.jsx';
 import Settings from './pages/Settings.jsx';
 
 // Kiosk pages: open to everyone in local mode, signed-in staff only with the shared database.
@@ -71,6 +72,7 @@ function Shell() {
             <Route path="/admin/records" element={guard(<Records />)} />
             <Route path="/admin/reports" element={guard(<Reports />)} />
             <Route path="/admin/schedule" element={guard(<Schedule />)} />
+            <Route path="/admin/qr" element={guard(<QrGenerator />)} />
             <Route path="/admin/settings" element={guard(<Settings />)} />
             <Route path="*" element={<Navigate to="/scan" replace />} />
           </Routes>

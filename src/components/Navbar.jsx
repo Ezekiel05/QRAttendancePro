@@ -53,6 +53,9 @@ export default function Navbar() {
               <NavLink to="/admin/reports" className={linkCls}>
                 Reports
               </NavLink>
+              <NavLink to="/admin/qr" className={linkCls}>
+                QR Codes
+              </NavLink>
               <NavLink to="/admin/settings" className={linkCls}>
                 Settings
               </NavLink>

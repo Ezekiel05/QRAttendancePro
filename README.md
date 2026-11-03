@@ -166,6 +166,14 @@ local mode.
 - Changing `package.json` dependencies means running `npm install` and committing the updated
   `package-lock.json`.
 
+## QR Generator
+
+QR Codes (admin menu) makes a QR code for any link or text, or a Wi-Fi join code for kiosk tablets. Presets link
+to this site's own pages (signup, kiosk, home), so new hires can scan a poster to reach the signup page
+(self-signup must be enabled in Settings). Options: size, error correction, colours, white border and an
+optional caption. Outputs: PNG, SVG, copy to clipboard, and print. Codes are created in the browser; nothing is
+sent anywhere. Employee badges are still made from Employees (Badge / Print badges).
+
 ## Phones & tablets
 
 The whole app is responsive. Tables become card lists on phones (and, for Employees, on portrait tablets),
