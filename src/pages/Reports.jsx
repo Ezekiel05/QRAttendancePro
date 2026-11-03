@@ -37,7 +37,7 @@ const PRESETS = [
 ];
 
 export default function Reports() {
-  const { records, employees, settings, schedule } = useData();
+  const { records, employees, settings, schedule, patterns } = useData();
   const [[from, to], setRange] = useState(() => presetRange('week'));
   const [view, setView] = useState('summary'); // 'summary' | 'daily'
   const today = todayKey();
@@ -47,8 +47,8 @@ export default function Reports() {
     [records, employees, from, to]
   );
   const totals = useMemo(
-    () => employeeTotals(rows, employees, from, to, settings, today, schedule),
-    [rows, employees, from, to, settings, today, schedule]
+    () => employeeTotals(rows, employees, from, to, settings, today, schedule, patterns),
+    [rows, employees, from, to, settings, today, schedule, patterns]
   );
 
   const invalidRange = from > to;

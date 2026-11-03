@@ -24,7 +24,7 @@ import {
 } from '../components/ui.jsx';
 
 export default function Dashboard() {
-  const { employees, records, settings, schedule } = useData();
+  const { employees, records, settings, schedule, patterns } = useData();
   const today = todayKey();
   const active = useMemo(() => employees.filter((e) => e.active), [employees]);
 
@@ -39,7 +39,7 @@ export default function Dashboard() {
   const lateToday = todayRows.filter((r) => r.late).length;
   // Only people scheduled today whose shift has already started and who have not signed in for it.
   const notIn = active.filter((e) => {
-    const { shift, scheduled } = shiftForScan(e, now, settings, schedule);
+    const { shift, scheduled } = shiftForScan(e, now, settings, schedule, patterns);
     if (!scheduled || !shiftHasStarted(shift, now)) return false;
     const workDate = workDateOf(now, shift);
     if (isPresentNow(records, e.id, now, shift)) return false;

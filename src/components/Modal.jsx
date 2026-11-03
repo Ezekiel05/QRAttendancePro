@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 
-export default function Modal({ title, onClose, children, wide = false }) {
+export default function Modal({ title, onClose, children, wide = false, xwide = false }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -18,7 +18,7 @@ export default function Modal({ title, onClose, children, wide = false }) {
         role="dialog"
         aria-modal="true"
         className={`max-h-[90dvh] w-full overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800 ${
-          wide ? 'max-w-2xl' : 'max-w-md'
+          xwide ? 'max-w-4xl' : wide ? 'max-w-2xl' : 'max-w-md'
         }`}
       >
         <div className="mb-4 flex items-center justify-between">

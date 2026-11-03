@@ -1,4 +1,4 @@
-import { addDays, dateKey, minutesOfDay, parseHM, rangeKeys } from './time.js';
+import { addDays, dateKey, minutesOfDay, mondayOfKey, parseHM, rangeKeys } from './time.js';
 
 export const BADGE_PREFIX = 'QRA1:';
 
@@ -178,7 +178,7 @@ export function isWorkDay(key, settings) {
 }
 
 // Per-employee totals for a range, including absences on scheduled work days.
-export function employeeTotals(rows, employees, fromKey, toKey, settings, todayK, schedule) {
+export function employeeTotals(rows, employees, fromKey, toKey, settings, todayK, schedule, patterns) {
   const end = toKey > todayK ? todayK : toKey;
   const totals = [];
   for (const emp of employees) {
@@ -188,7 +188,7 @@ export function employeeTotals(rows, employees, fromKey, toKey, settings, todayK
     const start = created > fromKey ? created : fromKey;
     const workdays =
       start <= end
-        ? rangeKeys(start, end).filter((k) => scheduledShift(emp, k, settings, schedule))
+        ? rangeKeys(start, end).filter((k) => scheduledShift(emp, k, settings, schedule, patterns))
         : [];
     const presentDays = new Set(mine.filter((r) => r.firstIn).map((r) => r.date));
     totals.push({
@@ -212,8 +212,9 @@ export function employeeTotals(rows, employees, fromKey, toKey, settings, todayK
 // A day with no entry uses the employee's default shift on the company's work days.
 
 // The shift an employee is scheduled for on a date, or null if they are off.
-export function scheduledShift(employee, key, settings, schedule) {
-  const entry = schedule?.[employee.id]?.[key];
+export function scheduledShift(employee, key, settings, schedule, patterns) {
+  // Priority: a day set by hand > the employee's repeat pattern > default shift on work days.
+  const entry = schedule?.[employee.id]?.[key] || patternEntry(employee.id, key, patterns);
   if (entry === 'off') return null;
   if (entry) {
     const found = (settings.shifts || []).find((s) => s.id === entry);
@@ -225,12 +226,12 @@ export function scheduledShift(employee, key, settings, schedule) {
 // Which shift does a scan at `when` belong to? Looks at today's shift and at
 // yesterday's overnight shift (still running after midnight) and picks the one
 // that starts closest to now. `scheduled` is false when nothing is planned.
-export function shiftForScan(employee, when, settings, schedule) {
+export function shiftForScan(employee, when, settings, schedule, patterns) {
   const today = dateKey(when);
   const candidates = [];
-  const todays = scheduledShift(employee, today, settings, schedule);
+  const todays = scheduledShift(employee, today, settings, schedule, patterns);
   if (todays) candidates.push(todays);
-  const yesterdays = scheduledShift(employee, addDays(today, -1), settings, schedule);
+  const yesterdays = scheduledShift(employee, addDays(today, -1), settings, schedule, patterns);
   // Yesterday's overnight shift only counts while it is still running.
   if (yesterdays && isOvernight(yesterdays) && minutesOfDay(when) < parseHM(yesterdays.end)) {
     candidates.push(yesterdays);
@@ -254,7 +255,7 @@ export function shiftForScan(employee, when, settings, schedule) {
 // Shift, work date and "scheduled" flag for a new/edited record.
 // A sign-out is paired with the latest sign-in before it (within 24h) so the
 // session is judged against, and filed under, the shift it started in.
-export function resolveShift({ employee, type, when, recs, settings, schedule, ignoreId }) {
+export function resolveShift({ employee, type, when, recs, settings, schedule, patterns, ignoreId }) {
   const ts = when.toISOString();
   if (type === 'out') {
     let prevIn = null;
@@ -268,6 +269,23 @@ export function resolveShift({ employee, type, when, recs, settings, schedule, i
       if (shift) return { shift, scheduled: true, workDate: recordDay(prevIn) };
     }
   }
-  const { shift, scheduled } = shiftForScan(employee, when, settings, schedule);
+  const { shift, scheduled } = shiftForScan(employee, when, settings, schedule, patterns);
   return { shift, scheduled, workDate: workDateOf(when, shift) };
+}
+
+// ---- Repeat patterns ----------------------------------------------------------
+// patterns = { [employeeId]: { anchor: 'YYYY-MM-DD' (a Monday), weeks: [[7 x ('' | 'off' | shiftId)], ...] } }
+// weeks[0] applies to the anchor week, weeks[1] to the next, and so on, repeating.
+// '' means "no opinion" (fall back to the default shift on work days). A pattern
+// never applies to dates before its anchor, so past attendance is not reinterpreted.
+export function patternEntry(employeeId, key, patterns) {
+  const p = patterns?.[employeeId];
+  if (!p || !p.weeks?.length || !p.anchor || key < p.anchor) return '';
+  const days = Math.round(
+    (new Date(`${mondayOfKey(key)}T00:00:00`) - new Date(`${p.anchor}T00:00:00`)) / 86400000
+  );
+  const n = p.weeks.length;
+  const weekIndex = ((Math.floor(days / 7) % n) + n) % n;
+  const dayIndex = (new Date(`${key}T00:00:00`).getDay() + 6) % 7; // Monday = 0
+  return p.weeks[weekIndex]?.[dayIndex] || '';
 }

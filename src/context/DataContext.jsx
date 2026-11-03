@@ -18,6 +18,7 @@ const loadRecords = () => load(KEYS.records, []);
 const loadSettings = () => normalizeSettings(load(KEYS.settings, {}));
 const loadPending = () => load(KEYS.pending, []);
 const loadSchedule = () => load(KEYS.schedule, {});
+const loadPatterns = () => load(KEYS.patterns, {});
 
 function nextEmployeeCode(employees) {
   let max = 0;
@@ -34,6 +35,7 @@ export function DataProvider({ children }) {
   const [settings, setSettings] = useState(loadSettings);
   const [pending, setPending] = useState(loadPending);
   const [schedule, setSchedule] = useState(loadSchedule);
+  const [patterns, setPatterns] = useState(loadPatterns);
 
   // Keep every open tab in sync (e.g. kiosk tab + admin tab in the same browser).
   useEffect(() => {
@@ -43,6 +45,7 @@ export function DataProvider({ children }) {
       if (e.key === null || e.key === KEYS.settings) setSettings(loadSettings());
       if (e.key === null || e.key === KEYS.pending) setPending(loadPending());
       if (e.key === null || e.key === KEYS.schedule) setSchedule(loadSchedule());
+      if (e.key === null || e.key === KEYS.patterns) setPatterns(loadPatterns());
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -83,6 +86,22 @@ export function DataProvider({ children }) {
       commitSchedule(next);
     },
     [commitSchedule]
+  );
+
+  const commitPatterns = useCallback((obj) => {
+    save(KEYS.patterns, obj);
+    setPatterns(obj);
+  }, []);
+
+  // pattern: { anchor: 'YYYY-MM-DD' (a Monday), weeks: [[7 x ('' | 'off' | shiftId)], ...] }, or null to remove.
+  const setPattern = useCallback(
+    (employeeId, pattern) => {
+      const next = { ...loadPatterns() };
+      if (pattern) next[employeeId] = pattern;
+      else delete next[employeeId];
+      commitPatterns(next);
+    },
+    [commitPatterns]
   );
 
   // ---------- Employees ----------
@@ -178,7 +197,8 @@ export function DataProvider({ children }) {
         when: now,
         recs,
         settings: cfg,
-        schedule: loadSchedule()
+        schedule: loadSchedule(),
+        patterns: loadPatterns()
       });
       const record = {
         id: uid(),
@@ -213,7 +233,8 @@ export function DataProvider({ children }) {
         when,
         recs: loadRecords(),
         settings: loadSettings(),
-        schedule: loadSchedule()
+        schedule: loadSchedule(),
+        patterns: loadPatterns()
       });
       const record = {
         id: uid(),
@@ -241,6 +262,7 @@ export function DataProvider({ children }) {
       const cfg = loadSettings();
       const all = loadRecords();
       const sched = loadSchedule();
+      const pats = loadPatterns();
       const next = all.map((r) => {
         if (r.id !== id) return r;
         const merged = { ...r, ...patch };
@@ -260,6 +282,7 @@ export function DataProvider({ children }) {
             recs: all,
             settings: cfg,
             schedule: sched,
+            patterns: pats,
             ignoreId: id
           });
         } else {
@@ -373,7 +396,8 @@ export function DataProvider({ children }) {
       employees: loadEmployees(),
       records: loadRecords(),
       settings: loadSettings(),
-      schedule: loadSchedule()
+      schedule: loadSchedule(),
+      patterns: loadPatterns()
     }),
     []
   );
@@ -395,6 +419,9 @@ export function DataProvider({ children }) {
     const sched = data.schedule && typeof data.schedule === 'object' ? data.schedule : {};
     save(KEYS.schedule, sched);
     setSchedule(sched);
+    const pats = data.patterns && typeof data.patterns === 'object' ? data.patterns : {};
+    save(KEYS.patterns, pats);
+    setPatterns(pats);
     if (data.settings && typeof data.settings === 'object') {
       const s = normalizeSettings(data.settings);
       save(KEYS.settings, s);
@@ -410,9 +437,10 @@ export function DataProvider({ children }) {
     commitRecords([]);
     commitPending([]);
     commitSchedule({});
+    commitPatterns({});
     save(KEYS.settings, DEFAULT_SETTINGS);
     setSettings({ ...DEFAULT_SETTINGS });
-  }, [commitEmployees, commitRecords, commitPending, commitSchedule]);
+  }, [commitEmployees, commitRecords, commitPending, commitSchedule, commitPatterns]);
 
   const employeeById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
 
@@ -439,7 +467,9 @@ export function DataProvider({ children }) {
     approveSignup,
     rejectSignup,
     schedule,
-    setScheduleEntries
+    setScheduleEntries,
+    patterns,
+    setPattern
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

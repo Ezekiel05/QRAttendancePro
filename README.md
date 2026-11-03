@@ -99,7 +99,12 @@ employee.
   started the evening before. A sign-out is judged against the shift its sign-in started under.
 - Scans on a day the person isn't scheduled are still recorded and flagged "Not scheduled" / "Unscheduled".
 - Dashboard "Not in yet" and the Reports absence counts follow the schedule.
-- The schedule is included in backups.
+- **Repeat patterns:** "Repeat…" next to an employee on the Schedule page sets a pattern that continues on
+  its own: a cycle of 1-4 weeks (for example week 1 Morning, week 2 Night) with a shift, Off or Default for
+  each day. The editor starts from the week you are viewing and applies from its starting week onward
+  (earlier dates are never changed).
+- Priority for any day: set by hand on the grid > repeat pattern > default shift on company work days.
+- The schedule and patterns are included in backups.
 
 ## Employee self-signup
 

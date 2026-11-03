@@ -63,3 +63,9 @@ export function toLocalInputValue(value = new Date()) {
   const d = new Date(value);
   return `${dateKey(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+// Monday of the week containing a date key.
+export function mondayOfKey(key) {
+  const d = new Date(`${key}T00:00:00`);
+  return addDays(key, -((d.getDay() + 6) % 7));
+}

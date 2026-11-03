@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useData } from '../context/DataContext.jsx';
-import { scheduledShift } from '../utils/attendance.js';
-import { addDays, todayKey } from '../utils/time.js';
-import { btnSecondary, cardCls, inputCls, muted, PageHeader } from '../components/ui.jsx';
+import { patternEntry, scheduledShift } from '../utils/attendance.js';
+import { addDays, mondayOfKey as mondayOf, todayKey } from '../utils/time.js';
+import PatternModal from '../components/PatternModal.jsx';
+import { btnSecondary, cardCls, inputCls, muted, PageHeader, Pill } from '../components/ui.jsx';
 
 const SHIFT_COLORS = [
   'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200',
@@ -11,8 +12,9 @@ const SHIFT_COLORS = [
   'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200'
 ];
 const OFF_COLOR = 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
+const smallBtn =
+  'rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600';
 
-const mondayOf = (key) => addDays(key, -((new Date(`${key}T00:00:00`).getDay() + 6) % 7));
 const dayLabel = (key) =>
   new Date(`${key}T00:00:00`).toLocaleDateString([], { weekday: 'short' });
 const dateLabel = (key) =>
@@ -24,11 +26,13 @@ function colorFor(shift, settings) {
   return SHIFT_COLORS[index % SHIFT_COLORS.length];
 }
 
-// One day for one employee. Solid = set explicitly, dashed = following the default.
-function DaySelect({ employee, dateK, settings, schedule, onChange }) {
+// One day for one employee. Solid = set by hand; indigo dashed = from a repeat
+// pattern; grey dashed = the employee's default.
+function DaySelect({ employee, dateK, settings, schedule, patterns, onChange }) {
   const entry = schedule[employee.id]?.[dateK] || '';
-  const resolved = scheduledShift(employee, dateK, settings, schedule);
-  const fallback = scheduledShift(employee, dateK, settings, {});
+  const resolved = scheduledShift(employee, dateK, settings, schedule, patterns);
+  const auto = scheduledShift(employee, dateK, settings, {}, patterns); // what clearing the day would give
+  const fromPattern = !entry && Boolean(patternEntry(employee.id, dateK, patterns));
   const options = settings.shifts.filter((s) => s.enabled || s.id === entry);
 
   return (
@@ -39,9 +43,15 @@ function DaySelect({ employee, dateK, settings, schedule, onChange }) {
       className={`w-full rounded-lg border px-2 py-1.5 text-base font-medium sm:text-sm ${colorFor(
         resolved,
         settings
-      )} ${entry ? 'border-transparent' : 'border-dashed border-slate-400'}`}
+      )} ${
+        entry
+          ? 'border-transparent'
+          : fromPattern
+          ? 'border-dashed border-indigo-500'
+          : 'border-dashed border-slate-400'
+      }`}
     >
-      <option value="">Default ({fallback ? fallback.name : 'Off'})</option>
+      <option value="">Auto ({auto ? auto.name : 'Off'})</option>
       <option value="off">Off</option>
       {options.map((s) => (
         <option key={s.id} value={s.id}>
@@ -67,15 +77,27 @@ function FillSelect({ shifts, onPick }) {
         </option>
       ))}
       <option value="off">Off all week</option>
-      <option value="clear">Reset to default</option>
+      <option value="clear">Reset to automatic</option>
     </select>
   );
 }
 
+function PatternControls({ pattern, onOpen }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {pattern && <Pill tone="indigo">Repeats every {pattern.weeks.length} wk</Pill>}
+      <button type="button" className={smallBtn} onClick={onOpen}>
+        {pattern ? 'Edit repeat' : 'Repeat…'}
+      </button>
+    </div>
+  );
+}
+
 export default function Schedule() {
-  const { employees, settings, schedule, setScheduleEntries } = useData();
+  const { employees, settings, schedule, patterns, setScheduleEntries, setPattern } = useData();
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayKey()));
   const [query, setQuery] = useState('');
+  const [patternFor, setPatternFor] = useState(null); // employee id
   const today = todayKey();
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
@@ -86,10 +108,13 @@ export default function Schedule() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return active.filter(
-      (e) => !q || [e.name, e.employeeCode, e.department].some((v) => String(v || '').toLowerCase().includes(q))
+      (e) =>
+        !q ||
+        [e.name, e.employeeCode, e.department].some((v) => String(v || '').toLowerCase().includes(q))
     );
   }, [active, query]);
   const enabledShifts = settings.shifts.filter((s) => s.enabled);
+  const patternEmployee = employees.find((e) => e.id === patternFor);
 
   // How many people are on each shift each day (all active employees, not just the filtered ones).
   const coverage = useMemo(
@@ -98,13 +123,13 @@ export default function Schedule() {
         const counts = {};
         let off = 0;
         for (const emp of active) {
-          const s = scheduledShift(emp, key, settings, schedule);
+          const s = scheduledShift(emp, key, settings, schedule, patterns);
           if (s) counts[s.id] = (counts[s.id] || 0) + 1;
           else off += 1;
         }
         return { key, counts, off };
       }),
-    [days, active, settings, schedule]
+    [days, active, settings, schedule, patterns]
   );
 
   const setCell = (employee, key, value) =>
@@ -117,8 +142,13 @@ export default function Schedule() {
     );
   }
 
+  // Copies the days set by hand last week; repeat patterns continue on their own.
   function copyLastWeek() {
-    if (!window.confirm('Copy last week\'s schedule over this week for everyone shown? This replaces what is set now.')) {
+    if (
+      !window.confirm(
+        "Copy last week's hand-set days over this week for everyone shown? This replaces what is set by hand now."
+      )
+    ) {
       return;
     }
     const entries = [];
@@ -131,7 +161,9 @@ export default function Schedule() {
   }
 
   function resetWeek() {
-    if (!window.confirm('Reset this week to defaults for everyone shown?')) return;
+    if (!window.confirm('Reset this week to automatic (repeat pattern or default) for everyone shown?')) {
+      return;
+    }
     setScheduleEntries(
       visible.flatMap((emp) => days.map((date) => ({ employeeId: emp.id, date, value: null })))
     );
@@ -143,7 +175,7 @@ export default function Schedule() {
     <div className="mx-auto max-w-6xl px-4 py-8">
       <PageHeader
         title="Schedule"
-        subtitle="Plot who works which shift each day. Days left on Default use the employee's default shift on company work days."
+        subtitle="Plot who works which shift each day. Days left on Auto follow the employee's repeat pattern, or their default shift on company work days."
       >
         <button className={btnSecondary} onClick={() => setWeekStart(addDays(weekStart, -7))}>
           ← Prev
@@ -185,7 +217,9 @@ export default function Schedule() {
           </span>
         ))}
         <span className={`rounded-full px-2.5 py-1 font-medium ${OFF_COLOR}`}>Off</span>
-        <span className={muted}>Dashed outline = following the default.</span>
+        <span className={muted}>
+          Solid = set by hand · indigo dashed = from a repeat pattern · grey dashed = default.
+        </span>
       </div>
 
       {visible.length === 0 && (
@@ -198,17 +232,24 @@ export default function Schedule() {
       <div className="space-y-3 md:hidden">
         {visible.map((emp) => (
           <div key={emp.id} className={`${cardCls} p-4`}>
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate font-semibold">{emp.name}</div>
                 <div className={`truncate text-xs ${muted}`}>{emp.department}</div>
               </div>
               <FillSelect shifts={enabledShifts} onPick={(pick) => fillWeek(emp, pick)} />
             </div>
+            <div className="mb-3">
+              <PatternControls pattern={patterns[emp.id]} onOpen={() => setPatternFor(emp.id)} />
+            </div>
             <div className="space-y-2">
               {days.map((key) => (
                 <div key={key} className="grid grid-cols-[4.5rem_1fr] items-center gap-3">
-                  <div className={`text-sm ${key === today ? 'font-bold text-indigo-600 dark:text-indigo-400' : muted}`}>
+                  <div
+                    className={`text-sm ${
+                      key === today ? 'font-bold text-indigo-600 dark:text-indigo-400' : muted
+                    }`}
+                  >
                     {dayLabel(key)} {dateLabel(key).split(' ')[1]}
                   </div>
                   <DaySelect
@@ -216,6 +257,7 @@ export default function Schedule() {
                     dateK={key}
                     settings={settings}
                     schedule={schedule}
+                    patterns={patterns}
                     onChange={(value) => setCell(emp, key, value)}
                   />
                 </div>
@@ -251,7 +293,13 @@ export default function Schedule() {
                   <td className="px-4 py-2">
                     <div className="font-medium">{emp.name}</div>
                     <div className={`mb-1 text-xs ${muted}`}>{emp.department}</div>
-                    <FillSelect shifts={enabledShifts} onPick={(pick) => fillWeek(emp, pick)} />
+                    <div className="flex flex-col items-start gap-1">
+                      <FillSelect shifts={enabledShifts} onPick={(pick) => fillWeek(emp, pick)} />
+                      <PatternControls
+                        pattern={patterns[emp.id]}
+                        onOpen={() => setPatternFor(emp.id)}
+                      />
+                    </div>
                   </td>
                   {days.map((key) => (
                     <td key={key} className="px-2 py-2">
@@ -260,6 +308,7 @@ export default function Schedule() {
                         dateK={key}
                         settings={settings}
                         schedule={schedule}
+                        patterns={patterns}
                         onChange={(value) => setCell(emp, key, value)}
                       />
                     </td>
@@ -289,6 +338,27 @@ export default function Schedule() {
             </tfoot>
           </table>
         </div>
+      )}
+
+      {patternEmployee && (
+        <PatternModal
+          key={patternEmployee.id}
+          employee={patternEmployee}
+          existing={patterns[patternEmployee.id]}
+          settings={settings}
+          schedule={schedule}
+          patterns={patterns}
+          viewWeek={weekStart}
+          onSave={(pattern) => {
+            setPattern(patternEmployee.id, pattern);
+            setPatternFor(null);
+          }}
+          onRemove={() => {
+            setPattern(patternEmployee.id, null);
+            setPatternFor(null);
+          }}
+          onClose={() => setPatternFor(null)}
+        />
       )}
     </div>
   );

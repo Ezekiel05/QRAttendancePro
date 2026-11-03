@@ -9,7 +9,8 @@ export const KEYS = {
   auth: 'qrap_auth',
   lock: 'qrap_lock',
   pending: 'qrap_pending',
-  schedule: 'qrap_schedule'
+  schedule: 'qrap_schedule',
+  patterns: 'qrap_patterns'
 };
 
 // Up to four shifts. A shift whose end is earlier than its start runs overnight.
