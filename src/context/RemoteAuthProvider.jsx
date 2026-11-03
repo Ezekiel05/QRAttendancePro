@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AuthContext } from './AuthContext.jsx';
 import { supabase } from '../lib/supabase.js';
+import { accountDisplayName, cleanDisplayName } from '../utils/accountName.js';
 
 // Sign-in through Supabase Auth. Accounts are created by the owner in the Supabase
 // dashboard and given a role ('admin' or 'kiosk') in the app_users table.
@@ -55,6 +56,7 @@ export default function RemoteAuthProvider({ children }) {
   }, [userId]);
 
   const email = authSession?.user?.email || '';
+  const displayName = accountDisplayName(authSession?.user?.user_metadata, email);
 
   const login = useCallback(async (emailInput, password) => {
     const { error } = await supabase.auth.signInWithPassword({
@@ -82,18 +84,27 @@ export default function RemoteAuthProvider({ children }) {
     [email]
   );
 
+  // The nickname lives in the account's own profile (user_metadata); it is only for display.
+  const updateDisplayName = useCallback(async (name) => {
+    const { error } = await supabase.auth.updateUser({ data: { display_name: cleanDisplayName(name) } });
+    return error ? { ok: false, error: error.message } : { ok: true };
+  }, []);
+
   const isStaff = role === 'admin' || role === 'kiosk';
 
   const value = {
     mode: 'remote',
     loading: booting || roleLoading,
-    session: isStaff ? { username: email, role } : null,
+    session: isStaff ? { username: displayName, role } : null,
     isAdmin: role === 'admin',
     isStaff,
     role,
     noAccess: Boolean(authSession) && role === 'none',
     needsSetup: false,
     adminUsername: email,
+    email,
+    displayName,
+    updateDisplayName,
     expired,
     setup: async () => ({ ok: false, error: 'Accounts are created in the Supabase dashboard.' }),
     login,

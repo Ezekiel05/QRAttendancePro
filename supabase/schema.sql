@@ -97,11 +97,22 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
+-- Admins always; kiosk accounts only while no kiosk code is set (see kiosk-access.sql, which
+-- carries the same definition: keep them identical).
 create or replace function public.is_staff() returns boolean
-language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from public.app_users where user_id = auth.uid()
-  );
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if public.is_admin() then
+    return true;
+  end if;
+  if not exists (select 1 from public.app_users where user_id = auth.uid() and role = 'kiosk') then
+    return false;
+  end if;
+  if to_regclass('public.kiosk_access') is not null then
+    return not exists (select 1 from public.kiosk_access where id = 1);
+  end if;
+  return true;
+end;
 $$;
 
 -- ---------- Row Level Security ----------------------------------------------

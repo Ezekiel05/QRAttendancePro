@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DataContext } from './DataContext.jsx';
 import { useAuth } from './AuthContext.jsx';
 import { supabase, supabaseHost } from '../lib/supabase.js';
-import { describeLoadError } from '../utils/errorText.js';
+import { describeLoadError, isMissingFunction } from '../utils/errorText.js';
 import { DEFAULT_SETTINGS, KEYS, load, normalizeSettings, save } from '../utils/storage.js';
 import { randomHex } from '../utils/crypto.js';
 import { computeScan, makeEmployee, makeManualRecord, rebuildRecord } from '../utils/recordOps.js';
@@ -17,6 +17,16 @@ const PAGE = 1000; // PostgREST returns at most 1000 rows per request
 const CHUNK = 500;
 
 const readOutbox = () => load(OUTBOX_KEY, []);
+
+// Key of this device once it was activated with the kiosk code (kept only in this browser).
+const KIOSK_TOKEN_KEY = 'qrap_kiosk_token';
+const readKioskToken = () => {
+  try {
+    return localStorage.getItem(KIOSK_TOKEN_KEY) || null;
+  } catch {
+    return null;
+  }
+};
 const unwrap = ({ error }) => {
   if (error) throw error;
 };
@@ -79,6 +89,13 @@ async function fetchEverything(admin) {
 }
 
 // ---- applying live changes -----------------------------------------------------
+// Kiosk accounts read everything through one database function that checks the device key.
+async function fetchKioskSnapshot(token) {
+  const { data, error } = await supabase.rpc('kiosk_load', { p_token: token });
+  if (error) throw error;
+  return M.snapshotFromKioskLoad(data, readOutbox());
+}
+
 function applyRow(setList, mapper, payload) {
   setList((list) => {
     if (payload.eventType === 'DELETE') return list.filter((x) => x.id !== payload.old.id);
@@ -132,10 +149,15 @@ export default function RemoteDataProvider({ children }) {
   const [error, setError] = useState('');
   const [outboxCount, setOutboxCount] = useState(() => readOutbox().length);
   const [realtime, setRealtime] = useState('NOT_CONNECTED');
+  const [kioskMode, setKioskMode] = useState('direct'); // 'direct' | 'device'
+  const [needsActivation, setNeedsActivation] = useState(false);
+  const [bootKey, setBootKey] = useState(0);
 
   // Always-fresh copy of the data for callbacks (camera scans, long-lived handlers).
   const stateRef = useRef({});
   stateRef.current = { employees, records, settings, pending, schedule, patterns };
+  const kioskModeRef = useRef('direct');
+  kioskModeRef.current = kioskMode;
 
   const fail = useCallback((err, fallback) => {
     console.error(err);
@@ -160,6 +182,7 @@ export default function RemoteDataProvider({ children }) {
 
     async function boot() {
       setLoading(true);
+      setNeedsActivation(false);
       try {
         if (!staff) {
           // Signed out: only the public signup info is available.
@@ -176,6 +199,42 @@ export default function RemoteDataProvider({ children }) {
           });
           return;
         }
+
+        if (auth.role === 'kiosk') {
+          const token = readKioskToken();
+          const { data: gate, error: gateError } = await supabase.rpc('kiosk_status', { p_token: token });
+          if (gateError && !isMissingFunction(gateError)) throw gateError;
+          if (!gateError) {
+            // The kiosk-access SQL is installed: kiosk accounts always go through its functions.
+            if (gate.codeRequired && !gate.deviceOk) {
+              if (token) {
+                try {
+                  localStorage.removeItem(KIOSK_TOKEN_KEY);
+                } catch {
+                  /* ignore */
+                }
+              }
+              if (cancelled) return;
+              apply({
+                employees: [],
+                records: [],
+                settings: { ...DEFAULT_SETTINGS },
+                pending: [],
+                schedule: {},
+                patterns: {}
+              });
+              setKioskMode('device');
+              setNeedsActivation(true);
+              return;
+            }
+            const snapshot = await fetchKioskSnapshot(token);
+            if (cancelled) return;
+            apply(snapshot);
+            setKioskMode('device');
+            return;
+          }
+        }
+        setKioskMode('direct');
 
         const d = await fetchEverything(admin);
         if (cancelled) return;
@@ -210,7 +269,7 @@ export default function RemoteDataProvider({ children }) {
       cancelled = true;
       if (channel) supabase.removeChannel(channel);
     };
-  }, [authLoading, staff, admin, apply, fail]);
+  }, [authLoading, staff, admin, auth.role, bootKey, apply, fail]);
 
   // Re-sync after the device was offline or the tab was in the background.
   useEffect(() => {
@@ -220,7 +279,7 @@ export default function RemoteDataProvider({ children }) {
       if (Date.now() - last < 5000) return;
       last = Date.now();
       try {
-        apply(await fetchEverything(admin));
+        apply(await (kioskModeRef.current === 'device' ? fetchKioskSnapshot(readKioskToken()) : fetchEverything(admin)));
       } catch {
         /* still offline: try again next time */
       }
@@ -245,9 +304,13 @@ export default function RemoteDataProvider({ children }) {
     }
     const sent = new Set();
     for (const item of items) {
-      const { error: e } = await supabase
-        .from('attendance_records')
-        .upsert(M.recordToDb(item), { onConflict: 'id', ignoreDuplicates: true });
+      const row = M.recordToDb(item);
+      const { error: e } =
+        kioskModeRef.current === 'device'
+          ? await supabase.rpc('kiosk_record', { p_token: readKioskToken(), p_record: row })
+          : await supabase
+              .from('attendance_records')
+              .upsert(row, { onConflict: 'id', ignoreDuplicates: true });
       if (!e) sent.add(item.id);
     }
     // Re-read so scans added while we were uploading are not lost.
@@ -255,6 +318,20 @@ export default function RemoteDataProvider({ children }) {
     save(OUTBOX_KEY, left);
     setOutboxCount(left.length);
   }, []);
+
+  // A kiosk device has no live channel (the server only serves it through functions), so refresh
+  // every minute. If its key was revoked or the code changed, go back to the activation screen.
+  useEffect(() => {
+    if (kioskMode !== 'device' || needsActivation) return undefined;
+    const timer = setInterval(async () => {
+      try {
+        apply(await fetchKioskSnapshot(readKioskToken()));
+      } catch (e) {
+        if (/not authorized/i.test(e?.message || '')) setBootKey((k) => k + 1);
+      }
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [kioskMode, needsActivation, apply]);
 
   useEffect(() => {
     if (!staff) return undefined;
@@ -286,7 +363,10 @@ export default function RemoteDataProvider({ children }) {
       // A badge nobody owns might belong to a signup that is still awaiting approval.
       if (!record && result.reason === 'unknown' && result.token) {
         try {
-          const { data } = await supabase.rpc('pending_token_exists', { token: result.token });
+          const { data } =
+            kioskModeRef.current === 'device'
+              ? await supabase.rpc('kiosk_pending_token', { p_token: readKioskToken(), p_badge: result.token })
+              : await supabase.rpc('pending_token_exists', { token: result.token });
           if (data === true) result = { ok: false, reason: 'pending' };
         } catch {
           /* leave as unknown */
@@ -611,6 +691,53 @@ export default function RemoteDataProvider({ children }) {
   }, [apply, fail]);
 
   // ---- self-signup --------------------------------------------------------------
+  // ---- kiosk access code ---------------------------------------------------------
+  const activateKiosk = useCallback(async (code, label) => {
+    try {
+      const { data, error: e } = await supabase.rpc('activate_kiosk', { p_code: code, p_label: label });
+      if (e) throw e;
+      if (!data?.ok) return { ok: false, error: data?.error || 'Could not activate this device.' };
+      try {
+        localStorage.setItem(KIOSK_TOKEN_KEY, data.token);
+      } catch {
+        return { ok: false, error: 'This browser blocked saving the device key.' };
+      }
+      setBootKey((k) => k + 1);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: describeLoadError(e, supabaseHost) || e?.message || 'Activation failed.' };
+    }
+  }, []);
+
+  // Admin: is a code set, and which devices are authorised?
+  const getKioskAccess = useCallback(async () => {
+    const { data: gate, error: e } = await supabase.rpc('kiosk_status', { p_token: null });
+    if (e) {
+      if (isMissingFunction(e)) return { installed: false };
+      throw e;
+    }
+    const { data: devices, error: e2 } = await supabase
+      .from('kiosk_devices')
+      .select('id,label,created_at,last_seen_at')
+      .order('created_at', { ascending: false });
+    if (e2) throw e2;
+    return { installed: true, codeSet: Boolean(gate?.codeRequired), devices: devices || [] };
+  }, []);
+
+  const setKioskCode = useCallback(async (code) => {
+    const { data, error: e } = await supabase.rpc('set_kiosk_code', { p_code: code });
+    if (e) throw e;
+    return data;
+  }, []);
+
+  const revokeKioskDevice = useCallback(async (id) => {
+    unwrap(await supabase.from('kiosk_devices').delete().eq('id', id));
+  }, []);
+
+  const revokeAllKioskDevices = useCallback(async () => {
+    unwrap(await supabase.from('kiosk_devices').delete().not('id', 'is', null));
+  }, []);
+
   const submitSignup = useCallback(async (data) => {
     try {
       const { data: res, error: e } = await supabase.rpc('submit_signup', {
@@ -700,6 +827,13 @@ export default function RemoteDataProvider({ children }) {
     mode: 'remote',
     realtime,
     testConnection,
+    kioskMode,
+    needsActivation,
+    activateKiosk,
+    getKioskAccess,
+    setKioskCode,
+    revokeKioskDevice,
+    revokeAllKioskDevices,
     loading,
     error,
     clearError,

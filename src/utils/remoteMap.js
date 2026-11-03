@@ -2,6 +2,8 @@
 // Timestamps are normalised to ISO strings ending in "Z" because the app compares
 // them as plain strings (Postgres returns "+00:00").
 
+import { normalizeSettings } from './storage.js';
+
 const iso = (v) => (v ? new Date(v).toISOString() : null);
 
 export const employeeFromDb = (r) => ({
@@ -82,3 +84,29 @@ export const pendingFromDb = (r) => ({
   consentAt: iso(r.consent_at),
   submittedAt: iso(r.submitted_at)
 });
+
+// Turns the kiosk_load() reply into the app's shapes. Scans still waiting in this
+// device's outbox are included so they count straight away.
+export function snapshotFromKioskLoad(data, outbox = []) {
+  const d = data || {};
+  const records = (d.records || []).map(recordFromDb);
+  const known = new Set(records.map((r) => r.id));
+  for (const r of outbox) if (!known.has(r.id)) records.push(r);
+
+  const schedule = {};
+  for (const e of d.schedule || []) {
+    if (!schedule[e.employee_id]) schedule[e.employee_id] = {};
+    schedule[e.employee_id][e.day] = e.value;
+  }
+  const patterns = {};
+  for (const p of d.patterns || []) patterns[p.employee_id] = p.pattern;
+
+  return {
+    employees: (d.employees || []).map(employeeFromDb),
+    records,
+    settings: normalizeSettings(d.settings || {}),
+    pending: [],
+    schedule,
+    patterns
+  };
+}

@@ -199,6 +199,29 @@ security rule. The app refuses to start the database connection if it detects on
   ends when the browser closes. The choice is remembered on that device. Admins are still signed out after the
   inactivity timeout in Settings, and kiosk accounts are never timed out. Leave it off on shared computers.
 
+## Kiosk access code (optional, shared database only)
+
+Stops a leaked kiosk login or link from being used on any other device. The database enforces it, not just the
+page.
+
+1. Re-run `supabase/schema.sql` once (it updates the access rules), then run `supabase/kiosk-access.sql`.
+2. Settings -> **Kiosk access** -> choose a code (6+ characters) -> Turn on.
+3. On each tablet, sign in with the kiosk account. It shows **Activate this kiosk**: enter the code once (and a device
+   name). The device stores its own secret key; only a hash of it is kept on the server.
+4. From then on that tablet works normally. Other devices, even with the kiosk login, get nothing.
+
+Admins can list devices, revoke one, or change/remove the code (which signs out every device) in Settings.
+Wrong codes are rate-limited (5 tries, then 15 minutes locked per account).
+
+Good to know: this authorises **devices**, not locations, and admin accounts are not covered (an admin can open the
+kiosk page anywhere), so keep admin passwords strong. With a code set, kiosk tablets refresh their data every
+minute instead of live. If you never run `kiosk-access.sql`, nothing changes.
+
+## Display name
+
+Click your name in the top bar (or Settings -> Your account) to set a nickname that is shown instead of your email
+(without one, the part before the @ is shown). Works for admin and kiosk accounts.
+
 ## QR Generator
 
 QR Codes (admin menu) makes a QR code for any link or text, or a Wi-Fi join code for kiosk tablets. Presets link

@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { MIN_PASSWORD_LENGTH, useAuth } from '../context/AuthContext.jsx';
 import { useData } from '../context/DataContext.jsx';
 import { downloadJSON } from '../utils/csv.js';
-import { dateKey } from '../utils/time.js';
+import { dateKey, fmtDateTime } from '../utils/time.js';
 import { logoFromFile } from '../utils/image.js';
+import ProfileModal from '../components/ProfileModal.jsx';
 import {
   btnDanger,
   btnPrimary,
@@ -37,9 +38,10 @@ function Field({ label, hint, children }) {
 }
 
 export default function Settings() {
-  const { settings, updateSettings, exportData, importData, clearRecords, resetAll, records, employees, mode, importLocalData, hasLocalData, testConnection } =
+  const { settings, updateSettings, exportData, importData, clearRecords, resetAll, records, employees, mode, importLocalData, hasLocalData, testConnection,
+    getKioskAccess, setKioskCode, revokeKioskDevice, revokeAllKioskDevices } =
     useData();
-  const { changePassword, adminUsername } = useAuth();
+  const { changePassword, adminUsername, displayName, email } = useAuth();
 
   const [form, setForm] = useState(settings);
   const [saved, setSaved] = useState(false);
@@ -47,6 +49,10 @@ export default function Settings() {
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [pwMsg, setPwMsg] = useState(null); // { ok, text }
   const [logoError, setLogoError] = useState('');
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [kiosk, setKiosk] = useState(null); // { installed, codeSet, devices } once loaded
+  const [newCode, setNewCode] = useState('');
+  const [kioskMsg, setKioskMsg] = useState('');
 
   useEffect(() => setForm(settings), [settings]);
 
@@ -136,6 +142,71 @@ export default function Settings() {
       setDataMsg(res.ok ? 'Backup restored.' : res.error);
     } catch {
       setDataMsg('Could not read that file.');
+    }
+  }
+
+  async function loadKiosk() {
+    try {
+      setKiosk(await getKioskAccess());
+    } catch (err) {
+      setKioskMsg(`Could not load kiosk access: ${err.message}`);
+    }
+  }
+
+  useEffect(() => {
+    if (getKioskAccess) loadKiosk();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getKioskAccess]);
+
+  async function handleSetCode() {
+    const warning = kiosk?.codeSet
+      ? 'Change the kiosk code? Every authorised device is signed out and must enter the new code.'
+      : 'Turn on the kiosk code? Kiosk accounts will need to be activated with it on each device.';
+    if (!window.confirm(warning)) return;
+    setKioskMsg('');
+    try {
+      const res = await setKioskCode(newCode);
+      if (res?.ok) {
+        setNewCode('');
+        setKioskMsg('Saved. Tell each kiosk operator the new code; devices must activate again.');
+      } else {
+        setKioskMsg(res?.error || 'Could not save the code.');
+      }
+      await loadKiosk();
+    } catch (err) {
+      setKioskMsg(err.message);
+    }
+  }
+
+  async function handleClearCode() {
+    if (!window.confirm('Turn off the kiosk code? Any signed-in kiosk account will work on any device again.')) return;
+    setKioskMsg('');
+    try {
+      await setKioskCode('');
+      setKioskMsg('Kiosk code turned off.');
+      await loadKiosk();
+    } catch (err) {
+      setKioskMsg(err.message);
+    }
+  }
+
+  async function handleRevoke(device) {
+    if (!window.confirm(`Revoke "${device.label || 'Kiosk device'}"? It must enter the code again to be used.`)) return;
+    try {
+      await revokeKioskDevice(device.id);
+      await loadKiosk();
+    } catch (err) {
+      setKioskMsg(err.message);
+    }
+  }
+
+  async function handleRevokeAll() {
+    if (!window.confirm('Revoke every authorised device?')) return;
+    try {
+      await revokeAllKioskDevices();
+      await loadKiosk();
+    } catch (err) {
+      setKioskMsg(err.message);
     }
   }
 
@@ -424,7 +495,107 @@ export default function Settings() {
         </Section>
       </form>
 
-      <Section title="Change password" description={`Signed in as ${adminUsername}.`}>
+      {getKioskAccess && (
+        <Section
+          title="Kiosk access"
+          description="Require a code before a device can be used as a kiosk, so a leaked kiosk login or link is useless on any other device."
+        >
+          {!kiosk && !kioskMsg && <p className={`text-sm ${muted}`}>Checking…</p>}
+          {kiosk && !kiosk.installed && (
+            <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              Not installed yet. In Supabase, open the SQL Editor and run <b>supabase/kiosk-access.sql</b> once, then
+              reload this page.
+            </p>
+          )}
+          {kiosk?.installed && (
+            <>
+              <p className="mb-3 text-sm">
+                Status:{' '}
+                <b>{kiosk.codeSet ? 'Code required' : 'Off (any signed-in kiosk account works anywhere)'}</b>
+              </p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[14rem] flex-1">
+                  <label className="mb-1 block text-sm font-medium">
+                    {kiosk.codeSet ? 'New kiosk code' : 'Kiosk code'}
+                  </label>
+                  <input
+                    className={inputCls}
+                    value={newCode}
+                    onChange={(e) => setNewCode(e.target.value)}
+                    placeholder="At least 6 characters"
+                    autoComplete="off"
+                  />
+                </div>
+                <button className={btnPrimary} onClick={handleSetCode} disabled={newCode.trim().length < 6}>
+                  {kiosk.codeSet ? 'Change code' : 'Turn on'}
+                </button>
+                {kiosk.codeSet && (
+                  <button className={btnDanger} onClick={handleClearCode}>
+                    Turn off
+                  </button>
+                )}
+              </div>
+              <p className={`mt-2 text-xs ${muted}`}>
+                Changing or removing the code signs out every authorised device. Admin accounts are not affected and
+                can still open the kiosk page anywhere.
+              </p>
+
+              {kiosk.codeSet && (
+                <div className="mt-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">Authorised devices ({kiosk.devices.length})</h3>
+                    <div className="flex gap-2">
+                      <button className={btnSecondary} onClick={loadKiosk}>
+                        Refresh
+                      </button>
+                      {kiosk.devices.length > 1 && (
+                        <button className={btnSecondary} onClick={handleRevokeAll}>
+                          Revoke all
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {kiosk.devices.length === 0 ? (
+                    <p className={`text-sm ${muted}`}>
+                      No device is authorised yet. Sign in with the kiosk account on a tablet and enter the code.
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-slate-100 dark:divide-slate-700">
+                      {kiosk.devices.map((d) => (
+                        <li key={d.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{d.label || 'Kiosk device'}</div>
+                            <div className={`text-xs ${muted}`}>
+                              Activated {fmtDateTime(d.created_at)} · last seen{' '}
+                              {d.last_seen_at ? fmtDateTime(d.last_seen_at) : 'never'}
+                            </div>
+                          </div>
+                          <button className={btnSecondary} onClick={() => handleRevoke(d)}>
+                            Revoke
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+          {kioskMsg && <p className={`mt-3 text-sm ${muted}`}>{kioskMsg}</p>}
+        </Section>
+      )}
+
+      <Section
+        title="Your account"
+        description={`Signed in as ${displayName}${email ? ` (${email})` : ''}.`}
+      >
+        <div className="mb-5">
+          <button type="button" className={btnSecondary} onClick={() => setProfileOpen(true)}>
+            Edit display name
+          </button>
+          <p className={`mt-1 text-xs ${muted}`}>Shown in the top bar instead of your email.</p>
+        </div>
+        <h3 className="mb-2 text-sm font-semibold">Change password</h3>
         <form onSubmit={submitPassword} className="grid gap-4 sm:grid-cols-3">
           <Field label="Current password">
             <input type="password" className={inputCls} value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} autoComplete="current-password" required />
@@ -481,6 +652,7 @@ export default function Settings() {
         </div>
         {dataMsg && <p className={`mt-3 text-sm ${muted}`}>{dataMsg}</p>}
       </Section>
+      {profileOpen && <ProfileModal onClose={() => setProfileOpen(false)} />}
     </div>
   );
 }

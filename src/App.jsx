@@ -7,6 +7,7 @@ import RemoteAuthProvider from './context/RemoteAuthProvider.jsx';
 import RemoteDataProvider from './context/RemoteDataProvider.jsx';
 import Navbar from './components/Navbar.jsx';
 import NoAccess from './components/NoAccess.jsx';
+import KioskActivation from './components/KioskActivation.jsx';
 import SyncBanner from './components/SyncBanner.jsx';
 import InactivityGuard from './components/InactivityGuard.jsx';
 import Login from './pages/Login.jsx';
@@ -61,6 +62,8 @@ function Shell() {
       <main>
         {auth.loading || data.loading ? (
           <div className="px-4 py-16 text-center text-slate-500">Loading…</div>
+        ) : data.needsActivation ? (
+          <KioskActivation />
         ) : (
           <Routes>
             <Route path="/" element={<Navigate to="/scan" replace />} />

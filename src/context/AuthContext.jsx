@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { KEYS, load, save } from '../utils/storage.js';
 import { hashPassword, randomHex } from '../utils/crypto.js';
+import { cleanDisplayName } from '../utils/accountName.js';
 import { useData } from './DataContext.jsx';
 
 export const AuthContext = createContext(null);
@@ -131,6 +132,14 @@ export function AuthProvider({ children }) {
     }
   }
 
+  async function updateDisplayName(name) {
+    if (!auth) return { ok: false, error: 'No admin account.' };
+    const record = { ...auth, displayName: cleanDisplayName(name) };
+    save(KEYS.auth, record);
+    setAuth(record);
+    return { ok: true };
+  }
+
   const value = {
     mode: 'local',
     isStaff: true, // local mode: the kiosk page is open to everyone
@@ -139,6 +148,9 @@ export function AuthProvider({ children }) {
     isAdmin: !!session,
     needsSetup: !auth,
     adminUsername: auth ? auth.username : '',
+    email: '',
+    displayName: (auth && cleanDisplayName(auth.displayName)) || (auth ? auth.username : ''),
+    updateDisplayName,
     expired,
     setup,
     login,

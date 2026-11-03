@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useData } from '../context/DataContext.jsx';
 import { useTheme } from '../utils/useTheme.js';
+import ProfileModal from './ProfileModal.jsx';
 
 const linkCls = ({ isActive }) =>
   `whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
@@ -12,9 +13,10 @@ const linkCls = ({ isActive }) =>
   }`;
 
 export default function Navbar() {
-  const { isAdmin, logout, session } = useAuth();
+  const { isAdmin, logout, session, displayName } = useAuth();
   const { settings, mode } = useData();
   const [dark, toggleTheme] = useTheme();
+  const [profileOpen, setProfileOpen] = useState(false);
   const navigate = useNavigate();
 
   // Use the logo as the browser tab icon too.
@@ -110,9 +112,13 @@ export default function Navbar() {
           </button>
           {session ? (
             <>
-              <span className="hidden text-sm text-slate-500 dark:text-slate-400 sm:inline">
-                <b>{session.username}</b>
-              </span>
+              <button
+                onClick={() => setProfileOpen(true)}
+                title="Edit your display name"
+                className="hidden max-w-[10rem] truncate rounded-lg px-2 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 sm:inline"
+              >
+                {displayName}
+              </button>
               <button
                 onClick={() => {
                   logout();
@@ -133,6 +139,7 @@ export default function Navbar() {
           )}
         </div>
       </div>
+      {profileOpen && <ProfileModal onClose={() => setProfileOpen(false)} />}
     </nav>
   );
 }

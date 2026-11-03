@@ -1,3 +1,7 @@
+// True when a database function is not installed (e.g. an optional SQL file was not run).
+export const isMissingFunction = (err) =>
+  err?.code === 'PGRST202' || /Could not find the function/i.test(String(err?.message || ''));
+
 // Turns a raw database/network error into a message that says what to check.
 // Returns null when it has nothing better than the original message.
 export function describeLoadError(err, host) {
