@@ -25,9 +25,10 @@ const tones = {
   indigo: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
 };
 
-export function Pill({ tone = 'slate', children }) {
+export function Pill({ tone = 'slate', children, title }) {
   return (
     <span
+      title={title}
       className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}
     >
       {children}

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useData } from '../context/DataContext.jsx';
 import { dateKey, fmtDateTime, toLocalInputValue } from '../utils/time.js';
 import { recordDay } from '../utils/attendance.js';
-import { branchName, isOtherBranch } from '../utils/branches.js';
+import { branchName, expectedBranchId, isOtherBranch } from '../utils/branches.js';
 import { downloadCSV } from '../utils/csv.js';
 import Modal from '../components/Modal.jsx';
 import {
@@ -120,8 +120,18 @@ function RecordForm({ record, employees, branches = [], onSave, onClose }) {
 }
 
 export default function Records() {
-  const { records, employees, employeeById, addManualRecord, updateRecord, deleteRecord, settings, mode } =
-    useData();
+  const {
+    records,
+    employees,
+    employeeById,
+    addManualRecord,
+    updateRecord,
+    deleteRecord,
+    settings,
+    mode,
+    schedule,
+    patterns
+  } = useData();
   const [emp, setEmp] = useState('all');
   const [type, setType] = useState('all');
   const [branch, setBranch] = useState('all'); // where the scan happened
@@ -154,6 +164,8 @@ export default function Records() {
   const filtersOn = emp !== 'all' || type !== 'all' || branch !== 'all' || from || to;
 
   const nameOf = (r) => employeeById.get(r.employeeId)?.name || r.employeeName;
+  const scheduledAt = (r) =>
+    branchName(settings, expectedBranchId(r, employeeById.get(r.employeeId), schedule, patterns));
 
   function exportCSV() {
     downloadCSV(`attendance-log-${dateKey(new Date())}.csv`, [
@@ -277,7 +289,11 @@ export default function Records() {
               {r.edited && <Pill tone="amber">Edited</Pill>}
                     {r.unscheduled && <Pill tone="amber">Unscheduled</Pill>}
 {r.branchId && <Pill tone="slate">{branchName(settings, r.branchId)}</Pill>}
-{isOtherBranch(r, employeeById.get(r.employeeId)) && <Pill tone="amber">Other branch</Pill>}
+{isOtherBranch(r, employeeById.get(r.employeeId), schedule, patterns) && (
+  <Pill tone="amber" title={`Scheduled at ${scheduledAt(r)}`}>
+    Other branch
+  </Pill>
+)}
               {r.note && <span className={`text-xs ${muted}`}>{r.note}</span>}
             </div>
             <div className="mt-3 flex gap-2">
@@ -332,7 +348,11 @@ export default function Records() {
                     {r.edited && <Pill tone="amber">Edited</Pill>}
                     {r.unscheduled && <Pill tone="amber">Unscheduled</Pill>}
 {r.branchId && <Pill tone="slate">{branchName(settings, r.branchId)}</Pill>}
-{isOtherBranch(r, employeeById.get(r.employeeId)) && <Pill tone="amber">Other branch</Pill>}
+{isOtherBranch(r, employeeById.get(r.employeeId), schedule, patterns) && (
+  <Pill tone="amber" title={`Scheduled at ${scheduledAt(r)}`}>
+    Other branch
+  </Pill>
+)}
                     {r.note && <span className={`text-xs ${muted}`}>{r.note}</span>}
                   </div>
                 </td>

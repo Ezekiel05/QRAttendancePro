@@ -43,7 +43,7 @@ function ResultCard({ res }) {
     );
   }
 
-  const { employee, record } = res;
+  const { employee, record, expectedBranchId } = res;
   const isIn = record.type === 'in';
   const shiftName = (settings.shifts || []).find((s) => s.id === record.shiftId)?.name;
   let worked = null;
@@ -72,6 +72,9 @@ function ResultCard({ res }) {
         <span className="opacity-60">{employee.employeeCode}</span>
         {shiftName && <span className="opacity-60">· {shiftName}</span>}
         {record.unscheduled && <Pill tone="amber">Not scheduled</Pill>}
+        {expectedBranchId && record.branchId && expectedBranchId !== record.branchId && (
+          <Pill tone="amber">Scheduled at {branchName(settings, expectedBranchId)}</Pill>
+        )}
       </div>
       {worked !== null && (
         <p className="mt-2 text-sm opacity-80">Time worked today: {fmtDuration(worked)}</p>

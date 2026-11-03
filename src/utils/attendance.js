@@ -214,10 +214,10 @@ export function employeeTotals(rows, employees, fromKey, toKey, settings, todayK
 // The shift an employee is scheduled for on a date, or null if they are off.
 export function scheduledShift(employee, key, settings, schedule, patterns) {
   // Priority: a day set by hand > the employee's repeat pattern > default shift on work days.
-  const entry = schedule?.[employee.id]?.[key] || patternEntry(employee.id, key, patterns);
-  if (entry === 'off') return null;
-  if (entry) {
-    const found = (settings.shifts || []).find((s) => s.id === entry);
+  const entry = parseScheduleValue(schedule?.[employee.id]?.[key] || patternEntry(employee.id, key, patterns));
+  if (entry.off) return null;
+  if (entry.shiftId) {
+    const found = (settings.shifts || []).find((s) => s.id === entry.shiftId);
     if (found) return found;
   }
   return isWorkDay(key, settings) ? shiftFor(employee, settings) : null;
@@ -288,4 +288,28 @@ export function patternEntry(employeeId, key, patterns) {
   const weekIndex = ((Math.floor(days / 7) % n) + n) % n;
   const dayIndex = (new Date(`${key}T00:00:00`).getDay() + 6) % 7; // Monday = 0
   return p.weeks[weekIndex]?.[dayIndex] || '';
+}
+
+// ---- Schedule values with a branch ---------------------------------------------
+// A schedule or pattern cell is '' (nothing), 'off', a shift id, or a shift id with the branch the
+// person works at that day: 's2@b1'. '@b1' means "their default shift, at branch b1".
+export function parseScheduleValue(value) {
+  const v = String(value ?? '');
+  if (v === 'off') return { off: true, shiftId: '', branchId: '' };
+  const at = v.indexOf('@');
+  return at === -1
+    ? { off: false, shiftId: v, branchId: '' }
+    : { off: false, shiftId: v.slice(0, at), branchId: v.slice(at + 1) };
+}
+
+export function makeScheduleValue({ off = false, shiftId = '', branchId = '' } = {}) {
+  if (off) return 'off';
+  return branchId ? `${shiftId}@${branchId}` : shiftId;
+}
+
+// The branch someone is scheduled to work at on a date: the branch set for that day (by hand or by
+// their repeat pattern, same priority as the shift), otherwise the branch they are assigned to.
+export function scheduledBranch(employee, key, schedule, patterns) {
+  const entry = parseScheduleValue(schedule?.[employee.id]?.[key] || patternEntry(employee.id, key, patterns));
+  return entry.branchId || employee.branchId || '';
 }

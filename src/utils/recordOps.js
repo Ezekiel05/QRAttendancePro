@@ -7,6 +7,7 @@ import {
   lastRecordFor,
   nextType,
   resolveShift,
+  scheduledBranch,
   shiftFor,
   workDateOf
 } from './attendance.js';
@@ -118,7 +119,9 @@ export function computeScan({
     source,
     note: ''
   };
-  return { result: { ok: true, employee, record }, record };
+  // Where this person was scheduled to work that day (lets the kiosk say "Scheduled at ...").
+  const expectedBranchId = scheduledBranch(employee, workDate, schedule, patterns) || undefined;
+  return { result: { ok: true, employee, record, expectedBranchId }, record };
 }
 
 export function makeManualRecord({ employee, type, timestamp, note, branchId, records, settings, schedule, patterns }) {

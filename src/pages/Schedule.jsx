@@ -1,6 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useData } from '../context/DataContext.jsx';
-import { patternEntry, scheduledShift } from '../utils/attendance.js';
+import {
+  makeScheduleValue,
+  parseScheduleValue,
+  patternEntry,
+  scheduledBranch,
+  scheduledShift
+} from '../utils/attendance.js';
+import { branchName } from '../utils/branches.js';
 import { addDays, mondayOfKey as mondayOf, todayKey } from '../utils/time.js';
 import PatternModal from '../components/PatternModal.jsx';
 import { btnSecondary, cardCls, inputCls, muted, PageHeader, Pill } from '../components/ui.jsx';
@@ -26,39 +33,73 @@ function colorFor(shift, settings) {
   return SHIFT_COLORS[index % SHIFT_COLORS.length];
 }
 
-// One day for one employee. Solid = set by hand; indigo dashed = from a repeat
-// pattern; grey dashed = the employee's default.
-function DaySelect({ employee, dateK, settings, schedule, patterns, onChange }) {
-  const entry = schedule[employee.id]?.[dateK] || '';
+// One day for one employee: a shift picker and, with branches, a branch picker.
+// Solid = set by hand; indigo dashed = from a repeat pattern; grey dashed = default.
+function DaySelect({ employee, dateK, settings, schedule, patterns, branches, onChange }) {
+  const raw = schedule[employee.id]?.[dateK] || '';
+  const explicit = parseScheduleValue(raw);
+  const patternValue = patternEntry(employee.id, dateK, patterns);
+  const auto = parseScheduleValue(patternValue);
+  // What the pickers start from: the day's own entry, otherwise what the repeat pattern gives.
+  const base = raw ? explicit : auto;
+
   const resolved = scheduledShift(employee, dateK, settings, schedule, patterns);
-  const auto = scheduledShift(employee, dateK, settings, {}, patterns); // what clearing the day would give
-  const fromPattern = !entry && Boolean(patternEntry(employee.id, dateK, patterns));
-  const options = settings.shifts.filter((s) => s.enabled || s.id === entry);
+  const autoShift = scheduledShift(employee, dateK, settings, {}, patterns); // what clearing the shift gives
+  const fromPattern = !raw && Boolean(patternValue);
+  const options = settings.shifts.filter((s) => s.enabled || s.id === explicit.shiftId);
+  const homeName = branchName(settings, employee.branchId);
+
+  const setShift = (pick) => {
+    if (pick === 'off') return onChange('off');
+    return onChange(makeScheduleValue({ shiftId: pick, branchId: base.branchId }) || null);
+  };
+  const setBranch = (pick) =>
+    onChange(makeScheduleValue({ shiftId: base.shiftId, branchId: pick }) || null);
 
   return (
-    <select
-      aria-label={`${employee.name}, ${dayLabel(dateK)} ${dateLabel(dateK)}`}
-      value={entry}
-      onChange={(e) => onChange(e.target.value || null)}
-      className={`w-full rounded-lg border px-2 py-1.5 text-base font-medium sm:text-sm ${colorFor(
-        resolved,
-        settings
-      )} ${
-        entry
-          ? 'border-transparent'
-          : fromPattern
-          ? 'border-dashed border-indigo-500'
-          : 'border-dashed border-slate-400'
-      }`}
-    >
-      <option value="">Auto ({auto ? auto.name : 'Off'})</option>
-      <option value="off">Off</option>
-      {options.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.name} ({s.start}–{s.end})
-        </option>
-      ))}
-    </select>
+    <div className="space-y-1">
+      <select
+        aria-label={`${employee.name}, ${dayLabel(dateK)} ${dateLabel(dateK)}`}
+        value={explicit.off ? 'off' : explicit.shiftId}
+        onChange={(e) => setShift(e.target.value)}
+        className={`w-full rounded-lg border px-2 py-1.5 text-base font-medium sm:text-sm ${colorFor(
+          resolved,
+          settings
+        )} ${
+          raw
+            ? 'border-transparent'
+            : fromPattern
+            ? 'border-dashed border-indigo-500'
+            : 'border-dashed border-slate-400'
+        }`}
+      >
+        <option value="">Auto ({autoShift ? autoShift.name : 'Off'})</option>
+        <option value="off">Off</option>
+        {options.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name} ({s.start}–{s.end})
+          </option>
+        ))}
+      </select>
+      {branches.length > 0 && (
+        <select
+          aria-label={`Branch for ${employee.name}, ${dayLabel(dateK)} ${dateLabel(dateK)}`}
+          value={base.branchId}
+          disabled={base.off}
+          onChange={(e) => setBranch(e.target.value)}
+          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-base text-slate-700 disabled:opacity-40 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 sm:text-xs"
+        >
+          <option value="">Home{homeName ? ` (${homeName})` : ''}</option>
+          {branches
+            .filter((b) => b.active !== false || b.id === base.branchId)
+            .map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+        </select>
+      )}
+    </div>
   );
 }
 
@@ -82,6 +123,27 @@ function FillSelect({ shifts, onPick }) {
   );
 }
 
+function FillBranchSelect({ branches, onPick }) {
+  return (
+    <select
+      aria-label="Set the branch for the whole week"
+      value=""
+      onChange={(e) => onPick(e.target.value)}
+      className={`${inputCls} sm:w-auto sm:py-1`}
+    >
+      <option value="">Branch all week…</option>
+      <option value="home">Home branch</option>
+      {branches
+        .filter((b) => b.active !== false)
+        .map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name}
+          </option>
+        ))}
+    </select>
+  );
+}
+
 function PatternControls({ pattern, onOpen }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -94,11 +156,12 @@ function PatternControls({ pattern, onOpen }) {
 }
 
 export default function Schedule() {
-  const { employees, settings, schedule, patterns, setScheduleEntries, setPattern } = useData();
+  const { employees, settings, schedule, patterns, setScheduleEntries, setPattern, mode } = useData();
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayKey()));
   const [query, setQuery] = useState('');
   const [patternFor, setPatternFor] = useState(null); // employee id
   const today = todayKey();
+  const branches = mode === 'remote' ? settings.branches || [] : [];
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const active = useMemo(
@@ -114,20 +177,27 @@ export default function Schedule() {
     );
   }, [active, query]);
   const enabledShifts = settings.shifts.filter((s) => s.enabled);
+  const activeBranchList = branches.filter((b) => b.active !== false);
   const patternEmployee = employees.find((e) => e.id === patternFor);
 
-  // How many people are on each shift each day (all active employees, not just the filtered ones).
+  // How many people are on each shift, and at each branch, every day (all active employees).
   const coverage = useMemo(
     () =>
       days.map((key) => {
         const counts = {};
+        const byBranch = {};
         let off = 0;
         for (const emp of active) {
           const s = scheduledShift(emp, key, settings, schedule, patterns);
-          if (s) counts[s.id] = (counts[s.id] || 0) + 1;
-          else off += 1;
+          if (s) {
+            counts[s.id] = (counts[s.id] || 0) + 1;
+            const b = scheduledBranch(emp, key, schedule, patterns) || 'none';
+            byBranch[b] = (byBranch[b] || 0) + 1;
+          } else {
+            off += 1;
+          }
         }
-        return { key, counts, off };
+        return { key, counts, byBranch, off };
       }),
     [days, active, settings, schedule, patterns]
   );
@@ -135,11 +205,35 @@ export default function Schedule() {
   const setCell = (employee, key, value) =>
     setScheduleEntries([{ employeeId: employee.id, date: key, value }]);
 
+  // Sets the shift for the whole week but keeps any branch already chosen for a day.
   function fillWeek(employee, pick) {
     if (!pick) return;
     setScheduleEntries(
-      days.map((date) => ({ employeeId: employee.id, date, value: pick === 'clear' ? null : pick }))
+      days.map((date) => {
+        if (pick === 'clear') return { employeeId: employee.id, date, value: null };
+        if (pick === 'off') return { employeeId: employee.id, date, value: 'off' };
+        const keep = parseScheduleValue(schedule[employee.id]?.[date] || '').branchId;
+        return { employeeId: employee.id, date, value: makeScheduleValue({ shiftId: pick, branchId: keep }) };
+      })
     );
+  }
+
+  // Sets the branch for the whole week; days that are off stay off.
+  function fillBranch(employee, pick) {
+    if (!pick) return;
+    const branchId = pick === 'home' ? '' : pick;
+    const entries = [];
+    for (const date of days) {
+      const raw = schedule[employee.id]?.[date] || '';
+      const base = raw ? parseScheduleValue(raw) : parseScheduleValue(patternEntry(employee.id, date, patterns));
+      if (base.off) continue;
+      entries.push({
+        employeeId: employee.id,
+        date,
+        value: makeScheduleValue({ shiftId: base.shiftId, branchId }) || null
+      });
+    }
+    setScheduleEntries(entries);
   }
 
   // Copies the days set by hand last week; repeat patterns continue on their own.
@@ -175,7 +269,9 @@ export default function Schedule() {
     <div className="mx-auto max-w-6xl px-4 py-8">
       <PageHeader
         title="Schedule"
-        subtitle="Plot who works which shift each day. Days left on Auto follow the employee's repeat pattern, or their default shift on company work days."
+        subtitle={`Plot who works which shift${
+          branches.length ? ' and at which branch' : ''
+        } each day. Days left on Auto follow the employee's repeat pattern, or their default shift on company work days.`}
       >
         <button className={btnSecondary} onClick={() => setWeekStart(addDays(weekStart, -7))}>
           ← Prev
@@ -219,6 +315,7 @@ export default function Schedule() {
         <span className={`rounded-full px-2.5 py-1 font-medium ${OFF_COLOR}`}>Off</span>
         <span className={muted}>
           Solid = set by hand · indigo dashed = from a repeat pattern · grey dashed = default.
+          {branches.length > 0 && ' The small dropdown is the branch (Home = their assigned branch).'}
         </span>
       </div>
 
@@ -235,18 +332,24 @@ export default function Schedule() {
             <div className="mb-2 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate font-semibold">{emp.name}</div>
-                <div className={`truncate text-xs ${muted}`}>{emp.department}</div>
+                <div className={`truncate text-xs ${muted}`}>
+                  {emp.department}
+                  {emp.branchId ? ` · ${branchName(settings, emp.branchId)}` : ''}
+                </div>
               </div>
-              <FillSelect shifts={enabledShifts} onPick={(pick) => fillWeek(emp, pick)} />
             </div>
-            <div className="mb-3">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <FillSelect shifts={enabledShifts} onPick={(pick) => fillWeek(emp, pick)} />
+              {branches.length > 0 && (
+                <FillBranchSelect branches={branches} onPick={(pick) => fillBranch(emp, pick)} />
+              )}
               <PatternControls pattern={patterns[emp.id]} onOpen={() => setPatternFor(emp.id)} />
             </div>
             <div className="space-y-2">
               {days.map((key) => (
-                <div key={key} className="grid grid-cols-[4.5rem_1fr] items-center gap-3">
+                <div key={key} className="grid grid-cols-[4.5rem_1fr] items-start gap-3">
                   <div
-                    className={`text-sm ${
+                    className={`pt-1.5 text-sm ${
                       key === today ? 'font-bold text-indigo-600 dark:text-indigo-400' : muted
                     }`}
                   >
@@ -258,6 +361,7 @@ export default function Schedule() {
                     settings={settings}
                     schedule={schedule}
                     patterns={patterns}
+                    branches={branches}
                     onChange={(value) => setCell(emp, key, value)}
                   />
                 </div>
@@ -290,11 +394,17 @@ export default function Schedule() {
             <tbody>
               {visible.map((emp) => (
                 <tr key={emp.id} className="border-t border-slate-100 dark:border-slate-700">
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 align-top">
                     <div className="font-medium">{emp.name}</div>
-                    <div className={`mb-1 text-xs ${muted}`}>{emp.department}</div>
+                    <div className={`mb-1 text-xs ${muted}`}>
+                      {emp.department}
+                      {emp.branchId ? ` · ${branchName(settings, emp.branchId)}` : ''}
+                    </div>
                     <div className="flex flex-col items-start gap-1">
                       <FillSelect shifts={enabledShifts} onPick={(pick) => fillWeek(emp, pick)} />
+                      {branches.length > 0 && (
+                        <FillBranchSelect branches={branches} onPick={(pick) => fillBranch(emp, pick)} />
+                      )}
                       <PatternControls
                         pattern={patterns[emp.id]}
                         onOpen={() => setPatternFor(emp.id)}
@@ -302,13 +412,14 @@ export default function Schedule() {
                     </div>
                   </td>
                   {days.map((key) => (
-                    <td key={key} className="px-2 py-2">
+                    <td key={key} className="px-2 py-2 align-top">
                       <DaySelect
                         employee={emp}
                         dateK={key}
                         settings={settings}
                         schedule={schedule}
                         patterns={patterns}
+                        branches={branches}
                         onChange={(value) => setCell(emp, key, value)}
                       />
                     </td>
@@ -327,6 +438,27 @@ export default function Schedule() {
                   ))}
                 </tr>
               ))}
+              {branches.length > 0 &&
+                activeBranchList.map((b) => (
+                  <tr key={`branch-${b.id}`}>
+                    <td className="px-4 py-2 font-medium">At {b.name}</td>
+                    {coverage.map((c) => (
+                      <td key={c.key} className="px-2 py-2 text-center">
+                        {c.byBranch[b.id] || 0}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              {branches.length > 0 && (
+                <tr>
+                  <td className="px-4 py-2 font-medium">At no branch</td>
+                  {coverage.map((c) => (
+                    <td key={c.key} className="px-2 py-2 text-center">
+                      {c.byBranch.none || 0}
+                    </td>
+                  ))}
+                </tr>
+              )}
               <tr>
                 <td className="px-4 py-2 font-medium">Off</td>
                 {coverage.map((c) => (
@@ -348,6 +480,7 @@ export default function Schedule() {
           settings={settings}
           schedule={schedule}
           patterns={patterns}
+          branches={branches}
           viewWeek={weekStart}
           onSave={(pattern) => {
             setPattern(patternEmployee.id, pattern);

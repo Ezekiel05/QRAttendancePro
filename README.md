@@ -238,6 +238,13 @@ the database stamps the branch itself, so nobody at the kiosk can pick or change
 `supabase/kiosk-access.sql` if you use the kiosk code, *then* deploy the new app version. Changes to a kiosk
 account's branch apply the next time that account signs in.
 
+**Working at another branch:** on the Schedule page every day has a second dropdown, *Home* or a branch, next to the
+shift. Pick a branch for a single day, or use **Branch all week** on a row. Repeat patterns can set a branch per
+week as well, and the footer shows headcount per branch. Without a choice, people follow their assigned branch.
+The Log flags **Other branch** only when someone signed in somewhere other than where they were scheduled that
+day (hover for where), and the kiosk says **Scheduled at ...** if the scan is at a different branch. This needs no
+database change.
+
 ## Menu
 
 The top bar is a hamburger menu: **Attendance** (Kiosk, Dashboard, Attendance log, Reports), **People** (Employees,

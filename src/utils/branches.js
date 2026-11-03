@@ -1,6 +1,7 @@
 // Branch helpers. Branches live in the settings (settings.branches) so they sync like every
 // other setting: [{ id, name, address, active }].
 import { randomHex } from './crypto.js';
+import { recordDay, scheduledBranch } from './attendance.js';
 
 export const activeBranches = (settings) => (settings.branches || []).filter((b) => b.active !== false);
 
@@ -35,6 +36,15 @@ export function branchUsage(id, employees, records) {
   };
 }
 
-// Signed in at a different branch than the one the employee is assigned to.
-export const isOtherBranch = (record, employee) =>
-  Boolean(record?.branchId && employee?.branchId && record.branchId !== employee.branchId);
+// Where an employee was meant to be on the day of a record: the branch scheduled for that day,
+// otherwise their assigned branch.
+export function expectedBranchId(record, employee, schedule, patterns) {
+  if (!employee) return '';
+  return scheduledBranch(employee, recordDay(record), schedule, patterns);
+}
+
+// Signed in at a different branch than the one they were scheduled at that day.
+export function isOtherBranch(record, employee, schedule, patterns) {
+  const expected = employee ? expectedBranchId(record, employee, schedule, patterns) : '';
+  return Boolean(record?.branchId && expected && record.branchId !== expected);
+}
