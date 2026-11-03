@@ -23,7 +23,8 @@ jobs:
         with:
           node-version: 20
       - name: Install dependencies
-        run: npm install
+        # npm ci wipes any node_modules that was committed from a Mac and installs the Linux binaries
+        run: npm ci
       - name: Build
         run: npm run build
         env:
