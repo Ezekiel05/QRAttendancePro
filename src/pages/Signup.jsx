@@ -233,11 +233,12 @@ export default function Signup() {
           Save your QR badge below. It starts working once an admin approves your registration.
         </p>
         <div className="mb-6 flex justify-center">
-          <BadgeCard employee={badgeEmployee} company={settings.companyName} />
+          <BadgeCard employee={badgeEmployee} company={settings.companyName} logo={settings.logo} />
         </div>
         <BadgeDownloadButton
           employee={badgeEmployee}
           company={settings.companyName}
+          logo={settings.logo}
           className={btnPrimary}
         >
           Download QR badge
@@ -267,6 +268,9 @@ export default function Signup() {
   return (
     <div className="mx-auto max-w-md px-4 py-8">
       <form onSubmit={goCapture} className={`${cardCls} p-6`}>
+        {settings.logo && (
+          <img src={settings.logo} alt="" className="mx-auto mb-4 h-16 w-16 object-contain" />
+        )}
         <h1 className="mb-1 text-xl font-bold">Employee signup</h1>
         <p className={`mb-5 text-sm ${muted}`}>
           Register to get your personal QR badge. An admin will approve it.

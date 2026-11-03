@@ -3,10 +3,13 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { BADGE_PREFIX } from '../utils/attendance.js';
 
 // Fixed (non-themed) colours so printed badges always look the same.
-export default function BadgeCard({ employee, company, size = 180 }) {
+export default function BadgeCard({ employee, company, logo, size = 180 }) {
   return (
     <div className="badge-card w-full max-w-[14rem] overflow-hidden rounded-xl border border-slate-300 bg-white text-center text-slate-900 shadow-sm">
-      <div className="truncate bg-indigo-600 px-3 py-2 text-sm font-bold text-white">{company}</div>
+      <div className="flex items-center justify-center gap-2 bg-indigo-600 px-3 py-2 text-sm font-bold text-white">
+        {logo && <img src={logo} alt="" className="h-6 w-6 shrink-0 rounded bg-white/90 object-contain p-0.5" />}
+        <span className="truncate">{company}</span>
+      </div>
       <div className="flex justify-center p-3">
         <QRCodeCanvas
           value={BADGE_PREFIX + employee.badgeToken}

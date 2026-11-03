@@ -3,9 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { MIN_PASSWORD_LENGTH, useAuth } from '../context/AuthContext.jsx';
 import { btnPrimary, cardCls, inputCls, muted } from '../components/ui.jsx';
 import NoAccess from '../components/NoAccess.jsx';
+import { useData } from '../context/DataContext.jsx';
+import { readStayPreference, writeStayPreference } from '../utils/authStorage.js';
 
 export default function Login() {
   const { login, setup, needsSetup, expired, isAdmin, session, mode, noAccess } = useAuth();
+  const { settings } = useData();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || '/admin';
@@ -15,6 +18,7 @@ export default function Login() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [stay, setStay] = useState(() => readStayPreference(localStorage));
 
   useEffect(() => {
     if (isAdmin) navigate(from, { replace: true });
@@ -29,7 +33,8 @@ export default function Login() {
       return;
     }
     setBusy(true);
-    const res = needsSetup ? await setup(username, password) : await login(username, password);
+    writeStayPreference(localStorage, stay);
+    const res = needsSetup ? await setup(username, password, stay) : await login(username, password, stay);
     setBusy(false);
     if (!res.ok) setError(res.error);
   }
@@ -39,6 +44,9 @@ export default function Login() {
   return (
     <div className="flex min-h-[80vh] items-center justify-center px-4">
       <form onSubmit={submit} className={`${cardCls} w-full max-w-sm p-8`}>
+        {settings.logo && (
+          <img src={settings.logo} alt="" className="mx-auto mb-4 h-16 w-16 object-contain" />
+        )}
         <h1 className="mb-1 text-xl font-bold">
           {needsSetup ? 'Create admin account' : mode === 'remote' ? 'Sign in' : 'Admin sign in'}
         </h1>
@@ -96,6 +104,22 @@ export default function Login() {
             <p className={`mb-6 text-xs ${muted}`}>At least {MIN_PASSWORD_LENGTH} characters.</p>
           </>
         )}
+
+        <label className="mb-5 flex items-start gap-2 text-sm">
+          <input
+            className="mt-1"
+            type="checkbox"
+            checked={stay}
+            onChange={(e) => setStay(e.target.checked)}
+          />
+          <span>
+            Stay signed in on this device
+            <span className={`block text-xs ${muted}`}>
+              Leave it off on a shared computer. Admins are still signed out after the inactivity timeout set
+              in Settings.
+            </span>
+          </span>
+        </label>
 
         <button type="submit" disabled={busy} className={`${btnPrimary} w-full py-2.5`}>
           {busy ? 'Please wait…' : needsSetup ? 'Create account & sign in' : 'Sign in'}

@@ -3,6 +3,7 @@ import { MIN_PASSWORD_LENGTH, useAuth } from '../context/AuthContext.jsx';
 import { useData } from '../context/DataContext.jsx';
 import { downloadJSON } from '../utils/csv.js';
 import { dateKey } from '../utils/time.js';
+import { logoFromFile } from '../utils/image.js';
 import {
   btnDanger,
   btnPrimary,
@@ -45,6 +46,7 @@ export default function Settings() {
   const [dataMsg, setDataMsg] = useState('');
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [pwMsg, setPwMsg] = useState(null); // { ok, text }
+  const [logoError, setLogoError] = useState('');
 
   useEffect(() => setForm(settings), [settings]);
 
@@ -57,6 +59,18 @@ export default function Settings() {
       'workDays',
       form.workDays.includes(d) ? form.workDays.filter((x) => x !== d) : [...form.workDays, d].sort()
     );
+
+  async function onLogo(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setLogoError('');
+    try {
+      set('logo', await logoFromFile(file));
+    } catch (err) {
+      setLogoError(err.message);
+    }
+  }
 
   const setShift = (index, patch) => {
     setForm((f) => ({
@@ -191,6 +205,39 @@ export default function Settings() {
                   {label}
                 </label>
               ))}
+            </div>
+          </div>
+        </Section>
+
+        <Section
+          title="Logo"
+          description="Shown in the top bar, on the sign-in and signup pages, on the kiosk, on badges, and as the browser tab icon."
+        >
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-white dark:border-slate-600">
+              {form.logo ? (
+                <img src={form.logo} alt="Logo preview" className="h-full w-full object-contain p-1" />
+              ) : (
+                <span className={`px-2 text-center text-xs ${muted}`}>No logo</span>
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <label className={`${btnSecondary} cursor-pointer`}>
+                  {form.logo ? 'Change logo…' : 'Upload logo…'}
+                  <input type="file" accept="image/*" className="hidden" onChange={onLogo} />
+                </label>
+                {form.logo && (
+                  <button type="button" className={btnSecondary} onClick={() => set('logo', '')}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              <p className={`text-xs ${muted}`}>
+                A PNG with a transparent background looks best. It is resized to fit 256 px automatically. Click
+                Save settings to apply it.
+              </p>
+              {logoError && <p className="text-xs text-red-600">{logoError}</p>}
             </div>
           </div>
         </Section>

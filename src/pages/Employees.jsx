@@ -391,6 +391,7 @@ export default function Employees() {
         <BadgeModal
           employee={badgeEmployee}
           company={settings.companyName}
+          logo={settings.logo}
           onClose={() => setBadgeId(null)}
         />
       )}

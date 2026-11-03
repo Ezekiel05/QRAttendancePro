@@ -12,7 +12,7 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 function readSession() {
   try {
-    return JSON.parse(sessionStorage.getItem(SESSION_KEY));
+    return JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? localStorage.getItem(SESSION_KEY));
   } catch {
     return null;
   }
@@ -25,9 +25,12 @@ export function AuthProvider({ children }) {
   const [expired, setExpired] = useState(false);
   const lastActive = useRef(Date.now());
 
-  const startSession = useCallback((username) => {
+  const startSession = useCallback((username, stay = false) => {
     const s = { username, startedAt: new Date().toISOString() };
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    // "Stay signed in" keeps the session across browser restarts; otherwise it ends with the tab.
+    const [use, other] = stay ? [localStorage, sessionStorage] : [sessionStorage, localStorage];
+    use.setItem(SESSION_KEY, JSON.stringify(s));
+    other.removeItem(SESSION_KEY);
     lastActive.current = Date.now();
     setExpired(false);
     setSession(s);
@@ -35,6 +38,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback((reason) => {
     sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
     setSession(null);
     if (reason === 'timeout') setExpired(true);
   }, []);
@@ -60,7 +64,7 @@ export function AuthProvider({ children }) {
     };
   }, [session, settings.sessionTimeoutMin, logout]);
 
-  async function setup(username, password) {
+  async function setup(username, password, stay = false) {
     if (auth) return { ok: false, error: 'An admin account already exists.' };
     const name = username.trim();
     if (!name) return { ok: false, error: 'Choose a username.' };
@@ -72,14 +76,14 @@ export function AuthProvider({ children }) {
       const record = { username: name, salt, hash: await hashPassword(password, salt) };
       save(KEYS.auth, record);
       setAuth(record);
-      startSession(name);
+      startSession(name, stay);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
     }
   }
 
-  async function login(username, password) {
+  async function login(username, password, stay = false) {
     if (!auth) return { ok: false, error: 'No admin account yet.' };
 
     const lock = load(KEYS.lock, { count: 0, until: 0 });
@@ -92,7 +96,7 @@ export function AuthProvider({ children }) {
       const hash = await hashPassword(password, auth.salt);
       if (username.trim().toLowerCase() === auth.username.toLowerCase() && hash === auth.hash) {
         save(KEYS.lock, { count: 0, until: 0 });
-        startSession(auth.username);
+        startSession(auth.username, stay);
         return { ok: true };
       }
     } catch (err) {

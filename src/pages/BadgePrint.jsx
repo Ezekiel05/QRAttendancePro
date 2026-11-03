@@ -51,7 +51,7 @@ export default function BadgePrint() {
 
       <div className="grid grid-cols-2 justify-items-center gap-6 md:grid-cols-3 lg:grid-cols-4 print:grid-cols-3">
         {selected.map((e) => (
-          <BadgeCard key={e.id} employee={e} company={settings.companyName} />
+          <BadgeCard key={e.id} employee={e} company={settings.companyName} logo={settings.logo} />
         ))}
       </div>
     </div>

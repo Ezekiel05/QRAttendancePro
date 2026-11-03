@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useData } from '../context/DataContext.jsx';
@@ -17,13 +17,33 @@ export default function Navbar() {
   const [dark, toggleTheme] = useTheme();
   const navigate = useNavigate();
 
+  // Use the logo as the browser tab icon too.
+  useEffect(() => {
+    let link = document.querySelector("link[rel~='icon']");
+    if (!settings.logo) {
+      if (link && link.dataset.qrap) link.remove();
+      return;
+    }
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.dataset.qrap = '1';
+    link.href = settings.logo;
+  }, [settings.logo]);
+
   return (
     <nav className="no-print sticky top-0 z-20 border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3">
         <Link to="/scan" className="flex items-center gap-2 text-lg font-extrabold">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-sm text-white">
-            QR
-          </span>
+          {settings.logo ? (
+            <img src={settings.logo} alt="" className="h-8 w-8 rounded-lg object-contain" />
+          ) : (
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-sm text-white">
+              QR
+            </span>
+          )}
           <span className="max-w-[8rem] truncate sm:max-w-[14rem]">{settings.companyName}</span>
         </Link>
 

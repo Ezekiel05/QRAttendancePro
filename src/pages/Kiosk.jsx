@@ -198,6 +198,9 @@ export default function Kiosk() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6 text-center">
+        {settings.logo && (
+          <img src={settings.logo} alt="" className="mx-auto mb-3 h-16 w-16 object-contain" />
+        )}
         <p className="text-4xl font-extrabold tabular-nums sm:text-5xl">
           {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </p>

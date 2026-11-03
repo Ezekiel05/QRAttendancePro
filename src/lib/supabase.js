@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { classifyKey } from '../utils/keyCheck.js';
 import { normalizeSupabaseUrl } from '../utils/supabaseUrl.js';
+import { createAuthStorage } from '../utils/authStorage.js';
 
 // The shared database is used only when a URL and a key are present (see README).
 // Without them the app runs in local mode, storing everything in this browser.
@@ -24,5 +25,15 @@ export const isRemote = Boolean(url && key) && kind !== 'secret';
 // The publishable/anon key is meant to be public: what each person can do is decided by
 // the Row Level Security rules in supabase/schema.sql, not by hiding this key.
 export const supabase = isRemote
-  ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } })
+  ? createClient(url, key, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        // Where the session lives depends on the "Stay signed in" box on the login page.
+        storage:
+          typeof window !== 'undefined'
+            ? createAuthStorage(window.localStorage, window.sessionStorage)
+            : undefined
+      }
+    })
   : null;

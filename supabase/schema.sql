@@ -178,7 +178,8 @@ language sql stable security definer set search_path = public as $$
     'selfSignupEnabled',  coalesce((data->>'selfSignupEnabled')::boolean, false),
     'signupCodeRequired', coalesce(data->>'signupCode', '') <> '',
     'faceEnabled',        coalesce((data->>'faceEnabled')::boolean, false),
-    'faceThreshold',      coalesce((data->>'faceThreshold')::numeric, 0.45)
+    'faceThreshold',      coalesce((data->>'faceThreshold')::numeric, 0.45),
+    'logo',               coalesce(data->>'logo', '')
   )
   from (
     select coalesce((select a.data from public.app_settings a where a.id = 1), '{}'::jsonb) as data

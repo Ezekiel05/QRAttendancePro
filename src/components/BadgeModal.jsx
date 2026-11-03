@@ -4,16 +4,17 @@ import BadgeCard from './BadgeCard.jsx';
 import BadgeDownloadButton from './BadgeDownloadButton.jsx';
 import { btnPrimary, btnSecondary } from './ui.jsx';
 
-export default function BadgeModal({ employee, company, onClose }) {
+export default function BadgeModal({ employee, company, logo, onClose }) {
   return (
     <Modal title="QR badge" onClose={onClose}>
       <div className="flex justify-center">
-        <BadgeCard employee={employee} company={company} size={200} />
+        <BadgeCard employee={employee} company={company} logo={logo} size={200} />
       </div>
       <div className="mt-5 flex gap-2">
         <BadgeDownloadButton
           employee={employee}
           company={company}
+          logo={logo}
           className={`${btnPrimary} flex-1`}
         />
         <button onClick={onClose} className={`${btnSecondary} flex-1`}>

@@ -188,6 +188,17 @@ security rule. The app refuses to start the database connection if it detects on
 - Tip: use a separate Supabase project for testing, with its own keys in `.env.local`, so test data never mixes
   with real data. The deployed site uses the keys stored as GitHub secrets.
 
+## Logo and sign-in options
+
+- **Logo:** Settings -> Logo -> upload any picture, then Save settings. It is resized to fit 256 px and stored with the
+  other settings (so it syncs to every device with the shared database). It appears in the top bar, on the sign-in
+  and signup pages, on the kiosk, on badges (including the downloaded PNG) and as the browser tab icon. For the logo
+  to show on the *public* pages (sign-in/signup while signed out) with the shared database, re-run
+  `supabase/schema.sql` once so the public info function includes it.
+- **Stay signed in:** a checkbox on the sign-in page. Ticked, the session survives closing the browser; unticked, it
+  ends when the browser closes. The choice is remembered on that device. Admins are still signed out after the
+  inactivity timeout in Settings, and kiosk accounts are never timed out. Leave it off on shared computers.
+
 ## QR Generator
 
 QR Codes (admin menu) makes a QR code for any link or text, or a Wi-Fi join code for kiosk tablets. Presets link
