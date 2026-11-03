@@ -222,6 +222,28 @@ minute instead of live. If you never run `kiosk-access.sql`, nothing changes.
 Click your name in the top bar (or Settings -> Your account) to set a nickname that is shown instead of your email
 (without one, the part before the @ is shown). Works for admin and kiosk accounts.
 
+## Branches (shared database only)
+
+Track where people sign in. Settings -> **Branches**: add your branches, then link each branch's **kiosk account**
+to its branch (give every tablet its own kiosk account). Scans from that account are recorded at that branch, and
+the database stamps the branch itself, so nobody at the kiosk can pick or change it.
+
+- Employees get an assigned branch (Employees -> add/edit, or when approving a signup) and can be filtered by it.
+- The attendance Log shows the branch of every scan, can filter by it, and flags **Other branch** when someone signed
+  in somewhere other than their assigned branch. Manual entries can set a branch.
+- Reports can filter by assigned branch and the daily CSV includes where each person signed in.
+- The Dashboard shows who is in right now per branch, and the kiosk shows its branch.
+
+**Setup:** re-run `supabase/schema.sql` first (it only adds columns and functions, so it is safe), re-run
+`supabase/kiosk-access.sql` if you use the kiosk code, *then* deploy the new app version. Changes to a kiosk
+account's branch apply the next time that account signs in.
+
+## Menu
+
+The top bar is a hamburger menu: **Attendance** (Kiosk, Dashboard, Attendance log, Reports), **People** (Employees,
+Schedule), **Tools** (QR codes, Print badges) and **Admin** (Settings). Signed-out visitors see Sign in and, when
+enabled, Employee signup. The menu also holds your display name and Sign out, which helps on phones.
+
 ## QR Generator
 
 QR Codes (admin menu) makes a QR code for any link or text, or a Wi-Fi join code for kiosk tablets. Presets link

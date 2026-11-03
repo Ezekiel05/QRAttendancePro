@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext.jsx';
 import { isPresentNow, shiftFor } from '../utils/attendance.js';
+import { branchName } from '../utils/branches.js';
 import PendingSignups from '../components/PendingSignups.jsx';
 import { todayKey } from '../utils/time.js';
 import BadgeModal from '../components/BadgeModal.jsx';
@@ -20,13 +21,14 @@ import {
   theadCls
 } from '../components/ui.jsx';
 
-function EmployeeForm({ initial, shifts, onSave, onClose }) {
+function EmployeeForm({ initial, shifts, branches = [], onSave, onClose }) {
   const [form, setForm] = useState({
     name: initial?.name || '',
     position: initial?.position || '',
     department: initial?.department || '',
     email: initial?.email || '',
-    shiftId: initial?.shiftId || shifts.find((s) => s.enabled)?.id || shifts[0].id
+    shiftId: initial?.shiftId || shifts.find((s) => s.enabled)?.id || shifts[0].id,
+    branchId: initial?.branchId || ''
   });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -38,7 +40,8 @@ function EmployeeForm({ initial, shifts, onSave, onClose }) {
       position: form.position.trim(),
       department: form.department.trim() || 'General',
       email: form.email.trim(),
-      shiftId: form.shiftId
+      shiftId: form.shiftId,
+      branchId: form.branchId
     });
   }
 
@@ -71,6 +74,21 @@ function EmployeeForm({ initial, shifts, onSave, onClose }) {
               ))}
           </select>
         </div>
+        {branches.length > 0 && (
+          <div>
+            <label className="mb-1 block text-sm font-medium">Branch</label>
+            <select className={inputCls} value={form.branchId} onChange={set('branchId')}>
+              <option value="">No branch</option>
+              {branches
+                .filter((b) => b.active !== false || b.id === form.branchId)
+                .map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-sm font-medium">Email</label>
           <input type="email" className={inputCls} value={form.email} onChange={set('email')} />
@@ -99,11 +117,13 @@ export default function Employees() {
     regenerateBadge,
     pending,
     approveSignup,
-    rejectSignup
+    rejectSignup,
+    mode
   } = useData();
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [shiftFilter, setShiftFilter] = useState('all');
+  const [branchFilter, setBranchFilter] = useState('all');
   const [editing, setEditing] = useState(null); // null | 'new' | employee
   const [badgeId, setBadgeId] = useState(null);
   const [faceId, setFaceId] = useState(null);
@@ -114,6 +134,7 @@ export default function Employees() {
     return employees
       .filter((e) => showArchived || e.active)
       .filter((e) => shiftFilter === 'all' || shiftFor(e, settings).id === shiftFilter)
+      .filter((e) => branchFilter === 'all' || (e.branchId || 'none') === branchFilter)
       .filter(
         (e) =>
           !q ||
@@ -122,7 +143,7 @@ export default function Employees() {
           )
       )
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [employees, query, showArchived, shiftFilter, settings]);
+  }, [employees, query, showArchived, shiftFilter, branchFilter, settings]);
 
   const badgeEmployee = employees.find((e) => e.id === badgeId);
   const faceEmployee = employees.find((e) => e.id === faceId);
@@ -143,14 +164,14 @@ export default function Employees() {
     }
   }
 
-  function handleApprove(reg, look, shiftId) {
+  function handleApprove(reg, look, shiftId, branchId) {
     if (
       look &&
       !window.confirm(`${reg.name}'s face looks like ${look}, who is already enrolled. Approve anyway?`)
     ) {
       return;
     }
-    approveSignup(reg.id, shiftId);
+    approveSignup(reg.id, shiftId, branchId);
   }
 
   function handleReject(reg) {
@@ -180,6 +201,7 @@ export default function Employees() {
       <PendingSignups
         pending={pending}
         shifts={settings.shifts}
+        branches={mode === 'remote' ? settings.branches || [] : []}
         employees={employees}
         threshold={Number(settings.faceThreshold) || 0.45}
         onApprove={handleApprove}
@@ -208,6 +230,24 @@ export default function Employees() {
               </option>
             ))}
         </select>
+        {mode === 'remote' && (settings.branches || []).length > 0 && (
+          <select
+            className={`${inputCls} sm:w-auto`}
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            aria-label="Filter by branch"
+          >
+            <option value="all">All branches</option>
+            {(settings.branches || [])
+              .filter((b) => b.active !== false)
+              .map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            <option value="none">No branch</option>
+          </select>
+        )}
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -248,6 +288,7 @@ export default function Employees() {
               </div>
               <div className={`mt-2 text-xs ${muted}`}>
                 {shift.name} · {shift.start}–{shift.end}
+                {mode === 'remote' && e.branchId && ` · ${branchName(settings, e.branchId)}`}
                 {e.faceDescriptors?.length > 0 && ' · Face enrolled'}
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -291,6 +332,7 @@ export default function Employees() {
               <th className="px-4 py-3 font-medium">Name</th>
               <th className="px-4 py-3 font-medium">Department</th>
               <th className="px-4 py-3 font-medium">Default shift</th>
+              {mode === 'remote' && <th className="px-4 py-3 font-medium">Branch</th>}
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 text-right font-medium">Actions</th>
             </tr>
@@ -298,7 +340,7 @@ export default function Employees() {
           <tbody>
             {list.length === 0 && (
               <tr>
-                <td colSpan={6} className={`px-4 py-8 text-center ${muted}`}>
+                <td colSpan={mode === 'remote' ? 7 : 6} className={`px-4 py-8 text-center ${muted}`}>
                   {employees.length === 0
                     ? 'No employees yet. Add your first one above.'
                     : 'No employees match your search.'}
@@ -324,6 +366,9 @@ export default function Employees() {
                     {shiftFor(e, settings).start}–{shiftFor(e, settings).end}
                   </div>
                 </td>
+                {mode === 'remote' && (
+                  <td className="px-4 py-3">{e.branchId ? branchName(settings, e.branchId) : '—'}</td>
+                )}
                 <td className="px-4 py-3">
                   {!e.active ? (
                     <Pill tone="slate">Archived</Pill>
@@ -371,6 +416,7 @@ export default function Employees() {
         <EmployeeForm
           initial={editing === 'new' ? null : editing}
           shifts={settings.shifts}
+          branches={mode === 'remote' ? settings.branches || [] : []}
           onSave={handleSave}
           onClose={() => setEditing(null)}
         />

@@ -158,6 +158,9 @@ export default function RemoteDataProvider({ children }) {
   stateRef.current = { employees, records, settings, pending, schedule, patterns };
   const kioskModeRef = useRef('direct');
   kioskModeRef.current = kioskMode;
+  // The branch of the signed-in kiosk account (kept in a ref so the scan callback always sees it).
+  const branchRef = useRef(null);
+  branchRef.current = auth.branchId;
 
   const fail = useCallback((err, fallback) => {
     console.error(err);
@@ -357,7 +360,8 @@ export default function RemoteDataProvider({ children }) {
         schedule: s.schedule,
         patterns: s.patterns,
         now: new Date(),
-        isPendingToken: () => false
+        isPendingToken: () => false,
+        branchId: branchRef.current || undefined
       });
 
       // A badge nobody owns might belong to a signup that is still awaiting approval.
@@ -446,7 +450,7 @@ export default function RemoteDataProvider({ children }) {
 
   // ---- records ----------------------------------------------------------------
   const addManualRecord = useCallback(
-    async ({ employeeId, type, timestamp, note }) => {
+    async ({ employeeId, type, timestamp, note, branchId }) => {
       try {
         const s = stateRef.current;
         const employee = s.employees.find((e) => e.id === employeeId);
@@ -456,6 +460,7 @@ export default function RemoteDataProvider({ children }) {
           type,
           timestamp,
           note,
+          branchId,
           records: s.records,
           settings: s.settings,
           schedule: s.schedule,
@@ -692,6 +697,18 @@ export default function RemoteDataProvider({ children }) {
 
   // ---- self-signup --------------------------------------------------------------
   // ---- kiosk access code ---------------------------------------------------------
+  // Admin: every account with its role and branch, and linking an account to a branch.
+  const listAccounts = useCallback(async () => {
+    const { data, error: e } = await supabase.rpc('list_accounts');
+    if (e) throw e;
+    return data || [];
+  }, []);
+
+  const setAccountBranch = useCallback(async (userId, branch) => {
+    const { error: e } = await supabase.rpc('set_account_branch', { p_user: userId, p_branch: branch || null });
+    if (e) throw e;
+  }, []);
+
   const activateKiosk = useCallback(async (code, label) => {
     try {
       const { data, error: e } = await supabase.rpc('activate_kiosk', { p_code: code, p_label: label });
@@ -762,11 +779,12 @@ export default function RemoteDataProvider({ children }) {
   }, []);
 
   const approveSignup = useCallback(
-    async (id, shiftId) => {
+    async (id, shiftId, branchId) => {
       try {
         const { data, error: e } = await supabase.rpc('approve_signup', {
           p_id: id,
-          p_shift: shiftId || null
+          p_shift: shiftId || null,
+          p_branch: branchId || null
         });
         if (e) throw e;
         const employee = M.employeeFromDb(data);
@@ -828,6 +846,8 @@ export default function RemoteDataProvider({ children }) {
     realtime,
     testConnection,
     kioskMode,
+    listAccounts,
+    setAccountBranch,
     needsActivation,
     activateKiosk,
     getKioskAccess,

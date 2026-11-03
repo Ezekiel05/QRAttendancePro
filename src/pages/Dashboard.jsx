@@ -12,6 +12,7 @@ import {
   workDateOf
 } from '../utils/attendance.js';
 import { addDays, dateKey, fmtTime, rangeKeys, todayKey } from '../utils/time.js';
+import { branchName } from '../utils/branches.js';
 import {
   btnPrimary,
   btnSecondary,
@@ -24,7 +25,7 @@ import {
 } from '../components/ui.jsx';
 
 export default function Dashboard() {
-  const { employees, records, settings, schedule, patterns } = useData();
+  const { employees, records, settings, schedule, patterns, mode } = useData();
   const today = todayKey();
   const active = useMemo(() => employees.filter((e) => e.active), [employees]);
 
@@ -36,6 +37,12 @@ export default function Dashboard() {
 
   const now = new Date();
   const presentNow = active.filter((e) => isPresentNow(records, e.id, now, shiftFor(e, settings)));
+  // Where each person who is in right now signed in.
+  const lastBranchOf = (e) => lastRecordFor(records, e.id)?.branchId || '';
+  const branchCounts = (settings.branches || [])
+    .filter((b) => b.active !== false)
+    .map((b) => ({ id: b.id, name: b.name, count: presentNow.filter((e) => lastBranchOf(e) === b.id).length }));
+  const noBranchCount = presentNow.filter((e) => !lastBranchOf(e)).length;
   const lateToday = todayRows.filter((r) => r.late).length;
   // Only people scheduled today whose shift has already started and who have not signed in for it.
   const notIn = active.filter((e) => {
@@ -118,13 +125,36 @@ export default function Dashboard() {
               return (
                 <li key={e.id} className="flex items-center justify-between">
                   <span className="font-medium">{e.name}</span>
-                  <span className={muted}>since {fmtTime(last.timestamp)}</span>
+                  <span className={muted}>
+                    since {fmtTime(last.timestamp)}
+                    {last.branchId ? ` · ${branchName(settings, last.branchId)}` : ''}
+                  </span>
                 </li>
               );
             })}
           </ul>
         </div>
       </div>
+
+      {mode === 'remote' && branchCounts.length > 0 && (
+        <div className={`${cardCls} mb-6 p-5`}>
+          <h2 className="mb-3 font-semibold">Signed in now, by branch</h2>
+          <div className="flex flex-wrap gap-3">
+            {branchCounts.map((b) => (
+              <div key={b.id} className="min-w-[8rem] rounded-xl border border-slate-200 px-4 py-3 dark:border-slate-700">
+                <div className={`text-xs ${muted}`}>{b.name}</div>
+                <div className="text-2xl font-extrabold">{b.count}</div>
+              </div>
+            ))}
+            {noBranchCount > 0 && (
+              <div className="min-w-[8rem] rounded-xl border border-slate-200 px-4 py-3 dark:border-slate-700">
+                <div className={`text-xs ${muted}`}>No branch</div>
+                <div className="text-2xl font-extrabold">{noBranchCount}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className={`${cardCls} p-5`}>

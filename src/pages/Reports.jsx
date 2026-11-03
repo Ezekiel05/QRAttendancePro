@@ -3,6 +3,7 @@ import { useData } from '../context/DataContext.jsx';
 import { buildReport, employeeTotals } from '../utils/attendance.js';
 import { addDays, fmtDate, fmtDuration, fmtTime, pad, todayKey } from '../utils/time.js';
 import { downloadCSV } from '../utils/csv.js';
+import { branchName } from '../utils/branches.js';
 import {
   btnSecondary,
   cardCls,
@@ -37,18 +38,30 @@ const PRESETS = [
 ];
 
 export default function Reports() {
-  const { records, employees, settings, schedule, patterns } = useData();
+  const { records, employees, settings, schedule, patterns, mode } = useData();
   const [[from, to], setRange] = useState(() => presetRange('week'));
   const [view, setView] = useState('summary'); // 'summary' | 'daily'
   const today = todayKey();
 
+  // Optional filter: only people assigned to one branch (all of their attendance counts).
+  const [branch, setBranch] = useState('all');
+  const scopedEmployees = useMemo(
+    () => (branch === 'all' ? employees : employees.filter((e) => (e.branchId || 'none') === branch)),
+    [employees, branch]
+  );
+  const scopedRecords = useMemo(() => {
+    if (branch === 'all') return records;
+    const ids = new Set(scopedEmployees.map((e) => e.id));
+    return records.filter((r) => ids.has(r.employeeId));
+  }, [records, scopedEmployees, branch]);
+
   const rows = useMemo(
-    () => buildReport(records, employees, from, to),
-    [records, employees, from, to]
+    () => buildReport(scopedRecords, scopedEmployees, from, to),
+    [scopedRecords, scopedEmployees, from, to]
   );
   const totals = useMemo(
-    () => employeeTotals(rows, employees, from, to, settings, today, schedule, patterns),
-    [rows, employees, from, to, settings, today, schedule, patterns]
+    () => employeeTotals(rows, scopedEmployees, from, to, settings, today, schedule, patterns),
+    [rows, scopedEmployees, from, to, settings, today, schedule, patterns]
   );
 
   const invalidRange = from > to;
@@ -71,7 +84,7 @@ export default function Reports() {
       ]);
     } else {
       downloadCSV(`attendance-daily-${from}_to_${to}.csv`, [
-        ['Date', 'Employee Code', 'Name', 'Department', 'First In', 'Last Out', 'Hours Worked', 'Late', 'Early Out', 'Missing Sign-out'],
+        ['Date', 'Employee Code', 'Name', 'Department', 'First In', 'Last Out', 'Hours Worked', 'Late', 'Early Out', 'Missing Sign-out', 'Signed in at'],
         ...rows.map((r) => [
           r.date,
           r.code,
@@ -82,7 +95,8 @@ export default function Reports() {
           (r.minutes / 60).toFixed(2),
           r.late ? 'Yes' : '',
           r.earlyOut ? 'Yes' : '',
-          r.missingOut || r.missingIn ? 'Yes' : ''
+          r.missingOut || r.missingIn ? 'Yes' : '',
+          branchName(settings, r.firstIn?.branchId)
         ])
       ]);
     }
@@ -136,6 +150,22 @@ export default function Reports() {
         <button className={tabCls(view === 'daily')} onClick={() => setView('daily')}>
           Daily detail
         </button>
+        {mode === 'remote' && (settings.branches || []).length > 0 && (
+          <select
+            className={`${inputCls} sm:w-auto`}
+            value={branch}
+            onChange={(e) => setBranch(e.target.value)}
+            aria-label="Employees assigned to branch"
+          >
+            <option value="all">All branches</option>
+            {(settings.branches || []).map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+            <option value="none">No branch</option>
+          </select>
+        )}
       </div>
 
       <div className="space-y-3 md:hidden">
@@ -244,13 +274,14 @@ export default function Reports() {
                 <th className="px-4 py-3 font-medium">First in</th>
                 <th className="px-4 py-3 font-medium">Last out</th>
                 <th className="px-4 py-3 font-medium">Hours</th>
+                {mode === 'remote' && <th className="px-4 py-3 font-medium">Signed in at</th>}
                 <th className="px-4 py-3 font-medium">Flags</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className={`px-4 py-8 text-center ${muted}`}>
+                  <td colSpan={mode === 'remote' ? 7 : 6} className={`px-4 py-8 text-center ${muted}`}>
                     No attendance in this range.
                   </td>
                 </tr>
@@ -262,6 +293,9 @@ export default function Reports() {
                   <td className="px-4 py-3">{r.firstIn ? fmtTime(r.firstIn.timestamp) : '—'}</td>
                   <td className="px-4 py-3">{r.lastOut ? fmtTime(r.lastOut.timestamp) : '—'}</td>
                   <td className="px-4 py-3">{fmtDuration(r.minutes)}</td>
+                  {mode === 'remote' && (
+                    <td className="px-4 py-3">{branchName(settings, r.firstIn?.branchId) || '—'}</td>
+                  )}
                   <td className="space-x-1 px-4 py-3">
                     {r.late && <Pill tone="amber">Late</Pill>}
                     {r.earlyOut && <Pill tone="amber">Early out</Pill>}

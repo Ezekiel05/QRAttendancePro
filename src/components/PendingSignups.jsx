@@ -16,8 +16,17 @@ function lookalike(reg, employees, threshold) {
   return null;
 }
 
-export default function PendingSignups({ pending, employees, shifts, threshold, onApprove, onReject }) {
+export default function PendingSignups({
+  pending,
+  employees,
+  shifts,
+  branches = [],
+  threshold,
+  onApprove,
+  onReject
+}) {
   const [picked, setPicked] = useState({});
+  const [pickedBranch, setPickedBranch] = useState({});
   if (!pending.length) return null;
 
   const enabled = shifts.filter((s) => s.enabled);
@@ -27,13 +36,14 @@ export default function PendingSignups({ pending, employees, shifts, threshold, 
     <section className={`${cardCls} mb-6 border-amber-300 p-5 dark:border-amber-700`}>
       <h2 className="mb-1 font-semibold">Pending signups ({pending.length})</h2>
       <p className={`mb-4 text-sm ${muted}`}>
-        Check the photo matches the person, choose their shift, then approve. Their saved QR badge
-        starts working on approval.
+        Check the photo matches the person, choose their shift{branches.length ? ' and branch' : ''}, then
+        approve. Their saved QR badge starts working on approval.
       </p>
       <div className="grid gap-4 md:grid-cols-2">
         {pending.map((reg) => {
           const look = lookalike(reg, employees, threshold);
           const shiftId = picked[reg.id] || defaultShift;
+          const branchId = pickedBranch[reg.id] || '';
           return (
             <div
               key={reg.id}
@@ -67,8 +77,25 @@ export default function PendingSignups({ pending, employees, shifts, threshold, 
                     </option>
                   ))}
                 </select>
+                {branches.length > 0 && (
+                  <select
+                    className={`${inputCls} mt-2`}
+                    value={branchId}
+                    onChange={(e) => setPickedBranch((p) => ({ ...p, [reg.id]: e.target.value }))}
+                    aria-label="Branch"
+                  >
+                    <option value="">No branch</option>
+                    {branches
+                      .filter((b) => b.active !== false)
+                      .map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                  </select>
+                )}
                 <div className="mt-3 flex gap-2">
-                  <button className={btnPrimary} onClick={() => onApprove(reg, look, shiftId)}>
+                  <button className={btnPrimary} onClick={() => onApprove(reg, look, shiftId, branchId)}>
                     Approve
                   </button>
                   <button className={btnSecondary} onClick={() => onReject(reg)}>

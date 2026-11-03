@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useData } from '../context/DataContext.jsx';
 import { dateKey, fmtDateTime, toLocalInputValue } from '../utils/time.js';
 import { recordDay } from '../utils/attendance.js';
+import { branchName, isOtherBranch } from '../utils/branches.js';
 import { downloadCSV } from '../utils/csv.js';
 import Modal from '../components/Modal.jsx';
 import {
@@ -21,7 +22,7 @@ import {
 
 const PAGE_SIZE = 25;
 
-function RecordForm({ record, employees, onSave, onClose }) {
+function RecordForm({ record, employees, branches = [], onSave, onClose }) {
   // If the record's employee was deleted, keep them selectable so the edit still works.
   const options = useMemo(() => {
     if (record && !employees.some((e) => e.id === record.employeeId)) {
@@ -34,11 +35,14 @@ function RecordForm({ record, employees, onSave, onClose }) {
   const [type, setType] = useState(record?.type || 'in');
   const [when, setWhen] = useState(toLocalInputValue(record?.timestamp || new Date()));
   const [note, setNote] = useState(record?.note || '');
+  const [branchId, setBranchId] = useState(
+    record ? record.branchId || '' : employees.find((e) => e.id === employeeId)?.branchId || ''
+  );
 
   function submit(e) {
     e.preventDefault();
     if (!employeeId || !when) return;
-    onSave({ employeeId, type, timestamp: new Date(when).toISOString(), note: note.trim() });
+    onSave({ employeeId, type, timestamp: new Date(when).toISOString(), note: note.trim(), branchId });
   }
 
   return (
@@ -78,6 +82,21 @@ function RecordForm({ record, employees, onSave, onClose }) {
             />
           </div>
         </div>
+        {branches.length > 0 && (
+          <div>
+            <label className="mb-1 block text-sm font-medium">Branch</label>
+            <select className={inputCls} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              <option value="">No branch</option>
+              {branches
+                .filter((b) => b.active !== false || b.id === branchId)
+                .map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-sm font-medium">Note (optional)</label>
           <input
@@ -101,16 +120,17 @@ function RecordForm({ record, employees, onSave, onClose }) {
 }
 
 export default function Records() {
-  const { records, employees, employeeById, addManualRecord, updateRecord, deleteRecord } =
+  const { records, employees, employeeById, addManualRecord, updateRecord, deleteRecord, settings, mode } =
     useData();
   const [emp, setEmp] = useState('all');
   const [type, setType] = useState('all');
+  const [branch, setBranch] = useState('all'); // where the scan happened
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState(null); // null | 'new' | record
 
-  useEffect(() => setPage(1), [emp, type, from, to]);
+  useEffect(() => setPage(1), [emp, type, branch, from, to]);
 
   const filtered = useMemo(
     () =>
@@ -118,25 +138,26 @@ export default function Records() {
         .filter((r) => {
           if (emp !== 'all' && r.employeeId !== emp) return false;
           if (type !== 'all' && r.type !== type) return false;
+          if (branch !== 'all' && (r.branchId || 'none') !== branch) return false;
           const k = recordDay(r);
           if (from && k < from) return false;
           if (to && k > to) return false;
           return true;
         })
         .sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
-    [records, emp, type, from, to]
+    [records, emp, type, branch, from, to]
   );
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, pages);
   const visible = filtered.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
-  const filtersOn = emp !== 'all' || type !== 'all' || from || to;
+  const filtersOn = emp !== 'all' || type !== 'all' || branch !== 'all' || from || to;
 
   const nameOf = (r) => employeeById.get(r.employeeId)?.name || r.employeeName;
 
   function exportCSV() {
     downloadCSV(`attendance-log-${dateKey(new Date())}.csv`, [
-      ['Employee Code', 'Name', 'Department', 'Event', 'Status', 'Date', 'Time', 'Source', 'Note'],
+      ['Employee Code', 'Name', 'Department', 'Event', 'Status', 'Date', 'Time', 'Source', 'Note', 'Branch'],
       ...filtered.map((r) => [
         r.employeeCode,
         nameOf(r),
@@ -146,7 +167,8 @@ export default function Records() {
         recordDay(r),
         new Date(r.timestamp).toLocaleTimeString(),
         r.source,
-        r.note
+        r.note,
+        branchName(settings, r.branchId)
       ])
     ]);
   }
@@ -192,6 +214,22 @@ export default function Records() {
           <option value="in">Sign in only</option>
           <option value="out">Sign out only</option>
         </select>
+        {mode === 'remote' && (settings.branches || []).length > 0 && (
+          <select
+            className={`${inputCls} sm:w-auto`}
+            value={branch}
+            onChange={(e) => setBranch(e.target.value)}
+            aria-label="Branch where the scan happened"
+          >
+            <option value="all">All branches</option>
+            {(settings.branches || []).map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+            <option value="none">No branch</option>
+          </select>
+        )}
         <input type="date" className={`${inputCls} sm:w-auto`} value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From date" />
         <span className={muted}>to</span>
         <input type="date" className={`${inputCls} sm:w-auto`} value={to} onChange={(e) => setTo(e.target.value)} aria-label="To date" />
@@ -201,6 +239,7 @@ export default function Records() {
             onClick={() => {
               setEmp('all');
               setType('all');
+              setBranch('all');
               setFrom('');
               setTo('');
             }}
@@ -237,6 +276,8 @@ export default function Records() {
               </Pill>
               {r.edited && <Pill tone="amber">Edited</Pill>}
                     {r.unscheduled && <Pill tone="amber">Unscheduled</Pill>}
+{r.branchId && <Pill tone="slate">{branchName(settings, r.branchId)}</Pill>}
+{isOtherBranch(r, employeeById.get(r.employeeId)) && <Pill tone="amber">Other branch</Pill>}
               {r.note && <span className={`text-xs ${muted}`}>{r.note}</span>}
             </div>
             <div className="mt-3 flex gap-2">
@@ -290,6 +331,8 @@ export default function Records() {
                     </Pill>
                     {r.edited && <Pill tone="amber">Edited</Pill>}
                     {r.unscheduled && <Pill tone="amber">Unscheduled</Pill>}
+{r.branchId && <Pill tone="slate">{branchName(settings, r.branchId)}</Pill>}
+{isOtherBranch(r, employeeById.get(r.employeeId)) && <Pill tone="amber">Other branch</Pill>}
                     {r.note && <span className={`text-xs ${muted}`}>{r.note}</span>}
                   </div>
                 </td>
@@ -316,6 +359,7 @@ export default function Records() {
         <RecordForm
           record={editing === 'new' ? null : editing}
           employees={employees}
+          branches={mode === 'remote' ? settings.branches || [] : []}
           onSave={handleSave}
           onClose={() => setEditing(null)}
         />

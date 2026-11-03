@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import FaceScanner from '../components/FaceScanner.jsx';
 import { useData } from '../context/DataContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { isPresentNow, recordDay, shiftFor, summarizeDay } from '../utils/attendance.js';
 import { dateKey, fmtDuration, fmtTime, todayKey } from '../utils/time.js';
 import { beep } from '../utils/sound.js';
+import { branchName } from '../utils/branches.js';
 import {
   btnPrimary,
   btnSecondary,
@@ -80,6 +82,7 @@ function ResultCard({ res }) {
 
 export default function Kiosk() {
   const { recordScan, settings, records, employees } = useData();
+  const { branchId } = useAuth();
   const [now, setNow] = useState(new Date());
   const [cameras, setCameras] = useState([]);
   const [cameraId, setCameraId] = useState('');
@@ -212,8 +215,9 @@ export default function Kiosk() {
             year: 'numeric'
           })}
         </p>
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
           <Pill tone="green">{signedIn} signed in now</Pill>
+          {branchId && <Pill tone="indigo">Branch: {branchName(settings, branchId)}</Pill>}
         </div>
       </div>
 

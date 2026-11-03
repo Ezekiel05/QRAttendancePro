@@ -30,6 +30,7 @@ export function makeEmployee(data, employees, settings) {
     position: data.position || '',
     email: data.email || '',
     shiftId: data.shiftId || shiftFor(null, settings).id,
+    ...(data.branchId ? { branchId: data.branchId } : {}),
     badgeToken: randomHex(12),
     active: true,
     createdAt: new Date().toISOString()
@@ -48,7 +49,8 @@ export function computeScan({
   schedule,
   patterns,
   now = new Date(),
-  isPendingToken
+  isPendingToken,
+  branchId
 }) {
   const text = String(raw || '').trim();
 
@@ -111,6 +113,7 @@ export function computeScan({
     shiftId: shift.id,
     workDate,
     ...(type === 'in' && !scheduled ? { unscheduled: true } : {}),
+    ...(branchId ? { branchId } : {}),
     timestamp: now.toISOString(),
     source,
     note: ''
@@ -118,7 +121,7 @@ export function computeScan({
   return { result: { ok: true, employee, record }, record };
 }
 
-export function makeManualRecord({ employee, type, timestamp, note, records, settings, schedule, patterns }) {
+export function makeManualRecord({ employee, type, timestamp, note, branchId, records, settings, schedule, patterns }) {
   const when = new Date(timestamp);
   const { shift, scheduled, workDate } = resolveShift({
     employee,
@@ -140,6 +143,7 @@ export function makeManualRecord({ employee, type, timestamp, note, records, set
     shiftId: shift.id,
     workDate,
     ...(type === 'in' && !scheduled ? { unscheduled: true } : {}),
+    ...(branchId ? { branchId } : {}),
     timestamp,
     source: 'manual',
     note: note || ''

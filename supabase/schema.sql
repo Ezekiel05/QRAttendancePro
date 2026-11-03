@@ -88,6 +88,13 @@ create table if not exists public.schedule_patterns (
   pattern     jsonb not null            -- { anchor: 'YYYY-MM-DD', weeks: [[7 x value], ...] }
 );
 
+-- ---------- Branches (added later; safe to run on an existing database) --------------
+
+alter table public.app_users          add column if not exists branch_id text;
+alter table public.employees          add column if not exists branch_id text;
+alter table public.attendance_records add column if not exists branch_id text;
+create index if not exists attendance_records_branch on public.attendance_records (branch_id);
+
 -- ---------- Role helpers -----------------------------------------------------
 
 create or replace function public.is_admin() returns boolean
@@ -255,7 +262,8 @@ $$;
 
 -- Admin approval: creates the employee (with the next EMP code) and removes the
 -- pending row in one step, so two admins can never produce the same code.
-create or replace function public.approve_signup(p_id text, p_shift text) returns public.employees
+drop function if exists public.approve_signup(text, text);
+create or replace function public.approve_signup(p_id text, p_shift text, p_branch text default null) returns public.employees
 language plpgsql security definer set search_path = public as $$
 declare
   reg    public.pending_signups;
@@ -281,14 +289,15 @@ begin
 
   insert into public.employees
     (id, employee_code, name, department, job_title, email, badge_token, shift_id, active,
-     face_descriptors, face_enrolled_at, face_consent_at)
+     face_descriptors, face_enrolled_at, face_consent_at, branch_id)
   values (
     reg.id,
     'EMP-' || lpad(next_n::text, 4, '0'),
     reg.name, reg.department, reg.job_title, reg.email, reg.badge_token, p_shift, true,
     case when has_face then reg.face_descriptors end,
     case when has_face then reg.submitted_at end,
-    case when has_face then reg.consent_at end
+    case when has_face then reg.consent_at end,
+    nullif(btrim(coalesce(p_branch, '')), '')
   )
   returning * into emp;
 
@@ -307,12 +316,75 @@ $$;
 
 revoke all on function public.get_public_info()               from public;
 revoke all on function public.submit_signup(jsonb)            from public;
-revoke all on function public.approve_signup(text, text)      from public;
+revoke all on function public.approve_signup(text, text, text)      from public;
 revoke all on function public.pending_token_exists(text)      from public;
 grant execute on function public.get_public_info()            to anon, authenticated;
 grant execute on function public.submit_signup(jsonb)         to anon, authenticated;
-grant execute on function public.approve_signup(text, text)   to authenticated;
+grant execute on function public.approve_signup(text, text, text)   to authenticated;
 grant execute on function public.pending_token_exists(text)   to authenticated;
+
+-- ---------- Branches: accounts, and scans stamped by the server ----------------------
+
+-- Admin: every account with its role, branch and display name (the app has no other way
+-- to see who the accounts are, because emails live in the auth schema).
+create or replace function public.list_accounts()
+returns table (user_id uuid, email text, role text, branch_id text, display_name text)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can list accounts.';
+  end if;
+  return query
+    select u.user_id,
+           a.email::text,
+           u.role,
+           u.branch_id,
+           coalesce(a.raw_user_meta_data->>'display_name', '')
+      from public.app_users u
+      join auth.users a on a.id = u.user_id
+     order by u.role, a.email;
+end;
+$$;
+
+-- Admin: link an account (normally a kiosk account) to a branch, or clear it with an empty value.
+create or replace function public.set_account_branch(p_user uuid, p_branch text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can change accounts.';
+  end if;
+  update public.app_users
+     set branch_id = nullif(btrim(coalesce(p_branch, '')), '')
+   where user_id = p_user;
+end;
+$$;
+
+revoke all on function public.list_accounts()                from public;
+revoke all on function public.set_account_branch(uuid, text)  from public;
+grant execute on function public.list_accounts()                to authenticated;
+grant execute on function public.set_account_branch(uuid, text) to authenticated;
+
+-- A scan from a kiosk account is always recorded at that account's branch, whatever the
+-- page sent, so nobody at the kiosk can pick or change it. Admin entries keep their own value.
+create or replace function public.set_record_branch() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  b text;
+begin
+  select u.branch_id into b
+    from public.app_users u
+   where u.user_id = auth.uid() and u.role = 'kiosk';
+  if found then
+    new.branch_id := b;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists attendance_set_branch on public.attendance_records;
+create trigger attendance_set_branch
+  before insert on public.attendance_records
+  for each row execute function public.set_record_branch();
 
 -- ---------- Live updates across devices --------------------------------------
 

@@ -257,10 +257,10 @@ begin
 
   insert into public.attendance_records
     (id, employee_id, employee_name, employee_code, department, type, status, shift_id,
-     work_date, unscheduled, edited, ts, source, note)
+     work_date, unscheduled, edited, ts, source, note, branch_id)
   select r.id, r.employee_id, r.employee_name, r.employee_code, r.department, r.type, r.status,
          r.shift_id, r.work_date, coalesce(r.unscheduled, false), false, r.ts,
-         coalesce(r.source, 'qr'), coalesce(r.note, '')
+         coalesce(r.source, 'qr'), coalesce(r.note, ''), r.branch_id
     from jsonb_populate_record(null::public.attendance_records, p_record) r
   on conflict (id) do nothing;
   return true;

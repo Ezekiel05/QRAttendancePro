@@ -4,6 +4,8 @@ import { useData } from '../context/DataContext.jsx';
 import { downloadJSON } from '../utils/csv.js';
 import { dateKey, fmtDateTime } from '../utils/time.js';
 import { logoFromFile } from '../utils/image.js';
+import { branchUsage, makeBranch, validateBranchName } from '../utils/branches.js';
+import { isMissingFunction } from '../utils/errorText.js';
 import ProfileModal from '../components/ProfileModal.jsx';
 import {
   btnDanger,
@@ -39,7 +41,8 @@ function Field({ label, hint, children }) {
 
 export default function Settings() {
   const { settings, updateSettings, exportData, importData, clearRecords, resetAll, records, employees, mode, importLocalData, hasLocalData, testConnection,
-    getKioskAccess, setKioskCode, revokeKioskDevice, revokeAllKioskDevices } =
+    getKioskAccess, setKioskCode, revokeKioskDevice, revokeAllKioskDevices,
+    listAccounts, setAccountBranch } =
     useData();
   const { changePassword, adminUsername, displayName, email } = useAuth();
 
@@ -53,6 +56,10 @@ export default function Settings() {
   const [kiosk, setKiosk] = useState(null); // { installed, codeSet, devices } once loaded
   const [newCode, setNewCode] = useState('');
   const [kioskMsg, setKioskMsg] = useState('');
+  const [branchForm, setBranchForm] = useState({ name: '', address: '' });
+  const [branchEdit, setBranchEdit] = useState(null); // { id, name, address } while renaming
+  const [branchMsg, setBranchMsg] = useState('');
+  const [accounts, setAccounts] = useState(null); // null = loading, 'missing' = SQL not re-run
 
   useEffect(() => setForm(settings), [settings]);
 
@@ -142,6 +149,78 @@ export default function Settings() {
       setDataMsg(res.ok ? 'Backup restored.' : res.error);
     } catch {
       setDataMsg('Could not read that file.');
+    }
+  }
+
+  const branches = settings.branches || [];
+
+  async function addBranch(e) {
+    e.preventDefault();
+    const problem = validateBranchName(branchForm.name, branches);
+    if (problem) {
+      setBranchMsg(problem);
+      return;
+    }
+    await updateSettings({ branches: [...branches, makeBranch(branchForm.name, branchForm.address)] });
+    setBranchForm({ name: '', address: '' });
+    setBranchMsg('');
+  }
+
+  async function saveBranchEdit() {
+    const problem = validateBranchName(branchEdit.name, branches, branchEdit.id);
+    if (problem) {
+      setBranchMsg(problem);
+      return;
+    }
+    await updateSettings({
+      branches: branches.map((b) =>
+        b.id === branchEdit.id
+          ? { ...b, name: branchEdit.name.trim().slice(0, 60), address: branchEdit.address.trim().slice(0, 120) }
+          : b
+      )
+    });
+    setBranchEdit(null);
+    setBranchMsg('');
+  }
+
+  const toggleBranch = (b) =>
+    updateSettings({ branches: branches.map((x) => (x.id === b.id ? { ...x, active: x.active === false } : x)) });
+
+  async function deleteBranch(b) {
+    const use = branchUsage(b.id, employees, records);
+    if (use.employees || use.records) {
+      setBranchMsg(
+        `"${b.name}" is used by ${use.employees} employee(s) and ${use.records} record(s), so it cannot be deleted. Archive it instead.`
+      );
+      return;
+    }
+    if (!window.confirm(`Delete the branch "${b.name}"?`)) return;
+    await updateSettings({ branches: branches.filter((x) => x.id !== b.id) });
+  }
+
+  async function loadAccounts() {
+    try {
+      setAccounts(await listAccounts());
+    } catch (err) {
+      if (isMissingFunction(err)) setAccounts('missing');
+      else {
+        setAccounts([]);
+        setBranchMsg(`Could not load accounts: ${err.message}`);
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (listAccounts) loadAccounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listAccounts]);
+
+  async function changeAccountBranch(userId, branchId) {
+    try {
+      await setAccountBranch(userId, branchId);
+      await loadAccounts();
+    } catch (err) {
+      setBranchMsg(err.message);
     }
   }
 
@@ -494,6 +573,149 @@ export default function Settings() {
           </div>
         </Section>
       </form>
+
+      {mode === 'remote' && (
+        <Section
+          title="Branches"
+          description="Add your branches, assign employees to them on the Employees page, and link each branch's kiosk account below. Every scan is recorded at the branch of the account it came from, and the kiosk cannot change that."
+        >
+          <form onSubmit={addBranch} className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[10rem] flex-1">
+              <label className="mb-1 block text-sm font-medium">Branch name</label>
+              <input
+                className={inputCls}
+                value={branchForm.name}
+                maxLength={60}
+                onChange={(e) => setBranchForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Makati"
+              />
+            </div>
+            <div className="min-w-[12rem] flex-1">
+              <label className="mb-1 block text-sm font-medium">Address (optional)</label>
+              <input
+                className={inputCls}
+                value={branchForm.address}
+                maxLength={120}
+                onChange={(e) => setBranchForm((f) => ({ ...f, address: e.target.value }))}
+              />
+            </div>
+            <button type="submit" className={btnPrimary}>
+              Add branch
+            </button>
+          </form>
+
+          {branches.length === 0 ? (
+            <p className={`mt-4 text-sm ${muted}`}>No branches yet.</p>
+          ) : (
+            <ul className="mt-4 divide-y divide-slate-100 dark:divide-slate-700">
+              {branches.map((b) => {
+                const editing = branchEdit?.id === b.id;
+                return (
+                  <li key={b.id} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
+                    {editing ? (
+                      <div className="flex min-w-[14rem] flex-1 flex-wrap gap-2">
+                        <input
+                          className={`${inputCls} flex-1`}
+                          value={branchEdit.name}
+                          maxLength={60}
+                          onChange={(e) => setBranchEdit((v) => ({ ...v, name: e.target.value }))}
+                        />
+                        <input
+                          className={`${inputCls} flex-1`}
+                          value={branchEdit.address}
+                          maxLength={120}
+                          placeholder="Address"
+                          onChange={(e) => setBranchEdit((v) => ({ ...v, address: e.target.value }))}
+                        />
+                      </div>
+                    ) : (
+                      <div className="min-w-0">
+                        <div className={`font-medium ${b.active === false ? 'text-slate-400 line-through' : ''}`}>
+                          {b.name}
+                          {b.active === false && <span className="ml-2 text-xs no-underline">(archived)</span>}
+                        </div>
+                        {b.address && <div className={`truncate text-xs ${muted}`}>{b.address}</div>}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      {editing ? (
+                        <>
+                          <button type="button" className={btnPrimary} onClick={saveBranchEdit}>
+                            Save
+                          </button>
+                          <button type="button" className={btnSecondary} onClick={() => setBranchEdit(null)}>
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className={btnSecondary}
+                            onClick={() => setBranchEdit({ id: b.id, name: b.name, address: b.address || '' })}
+                          >
+                            Edit
+                          </button>
+                          <button type="button" className={btnSecondary} onClick={() => toggleBranch(b)}>
+                            {b.active === false ? 'Restore' : 'Archive'}
+                          </button>
+                          <button type="button" className={btnSecondary} onClick={() => deleteBranch(b)}>
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <h3 className="mb-2 mt-6 text-sm font-semibold">Kiosk accounts and their branch</h3>
+          {accounts === 'missing' ? (
+            <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              Run <b>supabase/schema.sql</b> again in the Supabase SQL Editor to enable linking accounts to branches.
+            </p>
+          ) : accounts === null ? (
+            <p className={`text-sm ${muted}`}>Loading accounts…</p>
+          ) : accounts.length === 0 ? (
+            <p className={`text-sm ${muted}`}>No accounts found.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100 dark:divide-slate-700">
+              {accounts.map((a) => (
+                <li key={a.user_id} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{a.display_name || a.email}</div>
+                    <div className={`truncate text-xs ${muted}`}>
+                      {a.email} · {a.role}
+                    </div>
+                  </div>
+                  <select
+                    className={`${inputCls} sm:w-auto`}
+                    value={a.branch_id || ''}
+                    onChange={(e) => changeAccountBranch(a.user_id, e.target.value)}
+                    aria-label={`Branch for ${a.email}`}
+                  >
+                    <option value="">No branch</option>
+                    {branches
+                      .filter((b) => b.active !== false || b.id === a.branch_id)
+                      .map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                  </select>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className={`mt-2 text-xs ${muted}`}>
+            Give each branch tablet its own kiosk account and link it here. An admin account can be linked too; its
+            scans then count at that branch. Changes apply the next time that account signs in.
+          </p>
+          {branchMsg && <p className={`mt-3 text-sm ${muted}`}>{branchMsg}</p>}
+        </Section>
+      )}
 
       {getKioskAccess && (
         <Section

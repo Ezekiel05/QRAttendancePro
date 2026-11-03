@@ -8,6 +8,7 @@ import { accountDisplayName, cleanDisplayName } from '../utils/accountName.js';
 export default function RemoteAuthProvider({ children }) {
   const [authSession, setAuthSession] = useState(null);
   const [role, setRole] = useState(null); // 'admin' | 'kiosk' | 'none' | null
+  const [branchId, setBranchId] = useState(null); // the branch this account is linked to
   const [booting, setBooting] = useState(true);
   const [roleLoading, setRoleLoading] = useState(false);
   const [expired, setExpired] = useState(false);
@@ -34,22 +35,22 @@ export default function RemoteAuthProvider({ children }) {
   useEffect(() => {
     if (!userId) {
       setRole(null);
+      setBranchId(null);
       setRoleLoading(false);
       return undefined;
     }
     let active = true;
     setRoleLoading(true);
-    supabase
-      .from('app_users')
-      .select('role')
-      .eq('user_id', userId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (active) {
-          setRole(data?.role || 'none');
-          setRoleLoading(false);
-        }
-      });
+    (async () => {
+      let res = await supabase.from('app_users').select('role, branch_id').eq('user_id', userId).maybeSingle();
+      // Before schema.sql is re-run the branch_id column does not exist yet: fall back to just the role.
+      if (res.error) res = await supabase.from('app_users').select('role').eq('user_id', userId).maybeSingle();
+      if (active) {
+        setRole(res.data?.role || 'none');
+        setBranchId(res.data?.branch_id || null);
+        setRoleLoading(false);
+      }
+    })();
     return () => {
       active = false;
     };
@@ -99,6 +100,7 @@ export default function RemoteAuthProvider({ children }) {
     isAdmin: role === 'admin',
     isStaff,
     role,
+    branchId,
     noAccess: Boolean(authSession) && role === 'none',
     needsSetup: false,
     adminUsername: email,

@@ -24,6 +24,7 @@ export const DEFAULT_SHIFTS = [
 export const DEFAULT_SETTINGS = {
   companyName: 'My Company',
   logo: '', // small data-URL picture, set in Settings
+  branches: [], // [{ id, name, address, active }], used with the shared database
   shifts: DEFAULT_SHIFTS,
   workDays: [1, 2, 3, 4, 5], // 0 = Sunday
   minScanIntervalSec: 60,
