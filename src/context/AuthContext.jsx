@@ -3,7 +3,7 @@ import { KEYS, load, save } from '../utils/storage.js';
 import { hashPassword, randomHex } from '../utils/crypto.js';
 import { useData } from './DataContext.jsx';
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 const SESSION_KEY = 'qrap_session'; // sessionStorage: signed out when the tab closes
 const MAX_ATTEMPTS = 5;
@@ -128,6 +128,9 @@ export function AuthProvider({ children }) {
   }
 
   const value = {
+    mode: 'local',
+    isStaff: true, // local mode: the kiosk page is open to everyone
+    loading: false,
     session,
     isAdmin: !!session,
     needsSetup: !auth,

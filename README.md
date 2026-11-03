@@ -126,6 +126,46 @@ mandatory admin approval. The signup code is only a speed bump (stored unencrypt
 on the same browser/device the admin uses (for example the kiosk). Letting people sign up from their
 own phones needs the backend mentioned below.
 
+## Shared database (Supabase): use it from any device
+
+By default each browser keeps its own data. With a free [Supabase](https://supabase.com) project, every device
+(kiosk tablets, phones, the admin laptop) shares the same employees, schedule and attendance, updated live. The
+app switches to the database automatically when it finds the two keys below; without them it keeps running in
+local mode.
+
+**One-time setup**
+1. Create a free Supabase project. (Free projects pause after about a week with no activity; open the dashboard
+   to resume one.)
+2. SQL Editor -> New query -> paste all of `supabase/schema.sql` -> Run.
+3. Authentication -> Users -> Add user (tick *Auto Confirm User*): one account for you (admin) and one per
+   kiosk tablet. Then turn off public sign-ups (Authentication -> Sign In / Providers -> "Allow new users to
+   sign up" off) so only accounts you create can exist.
+4. Give each account a role in the SQL Editor (one statement per account, with its email):
+   ```sql
+   insert into public.app_users (user_id, role) select id, 'admin' from auth.users where email = 'you@example.com';
+   insert into public.app_users (user_id, role) select id, 'kiosk' from auth.users where email = 'kiosk@example.com';
+   ```
+5. Project Settings -> API: copy the *Project URL* and the *anon public* key.
+6. Locally: copy `.env.example` to `.env.local`, paste both values, then `npm install` and `npm run dev`.
+7. Deployed site: GitHub repo -> Settings -> Secrets and variables -> Actions -> New repository secret, add
+   `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then push (or re-run the workflow).
+8. Sign in as admin, then Settings -> Data -> **Import data saved in this browser** to bring over what you
+   already entered (use it in the browser that holds the data).
+
+**How it behaves**
+- **Roles:** *admin* can do everything; *kiosk* accounts (tablets) can only read employees/schedule and add
+  scans. Sign in once on a tablet and it stays signed in. Signed-out visitors can only use the signup page.
+- **Live sync:** changes appear on other devices within a second or two.
+- **Flaky Wi-Fi:** scans are saved on the device first and uploaded in the background (a banner shows how many
+  are waiting). The kiosk needs a connection to load at start-up.
+- **Security:** every table has Row Level Security (see `supabase/schema.sql`). The anon key in the web page is
+  public by design; the rules, not the key, protect the data. Face descriptors are readable by admin and kiosk
+  accounts (needed for face matching), so use strong passwords and keep kiosk accounts to tablets you trust.
+- **Signups** go through server-side functions that check the code, create the QR token and cap pending
+  signups; the duplicate-face warning is shown to the admin at approval time.
+- Changing `package.json` dependencies means running `npm install` and committing the updated
+  `package-lock.json`.
+
 ## Phones & tablets
 
 The whole app is responsive. Tables become card lists on phones (and, for Employees, on portrait tablets),

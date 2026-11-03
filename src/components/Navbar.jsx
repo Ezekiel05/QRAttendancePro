@@ -68,7 +68,7 @@ export default function Navbar() {
           >
             {dark ? '☀️' : '🌙'}
           </button>
-          {isAdmin ? (
+          {session ? (
             <>
               <span className="hidden text-sm text-slate-500 dark:text-slate-400 sm:inline">
                 <b>{session.username}</b>
@@ -88,7 +88,7 @@ export default function Navbar() {
               to="/login"
               className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
             >
-              Admin Sign In
+              Sign In
             </Link>
           )}
         </div>

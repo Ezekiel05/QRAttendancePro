@@ -36,7 +36,7 @@ function Field({ label, hint, children }) {
 }
 
 export default function Settings() {
-  const { settings, updateSettings, exportData, importData, clearRecords, resetAll, records, employees } =
+  const { settings, updateSettings, exportData, importData, clearRecords, resetAll, records, employees, mode, importLocalData, hasLocalData } =
     useData();
   const { changePassword, adminUsername } = useAuth();
 
@@ -118,11 +118,23 @@ export default function Settings() {
       const data = JSON.parse(await file.text());
       const msg = `Replace ALL current data with this backup (${data.employees?.length ?? 0} employees, ${data.records?.length ?? 0} records)?`;
       if (!window.confirm(msg)) return;
-      const res = importData(data);
+      const res = await importData(data);
       setDataMsg(res.ok ? 'Backup restored.' : res.error);
     } catch {
       setDataMsg('Could not read that file.');
     }
+  }
+
+  async function handleImportLocal() {
+    if (
+      !window.confirm(
+        'Copy the employees, attendance, schedule and settings saved in THIS browser into the shared database? This replaces what is in the database now.'
+      )
+    ) {
+      return;
+    }
+    const res = await importLocalData();
+    setDataMsg(res.ok ? 'Imported into the shared database.' : res.error);
   }
 
   function handleClear() {
@@ -135,7 +147,7 @@ export default function Settings() {
   function handleReset() {
     if (
       window.confirm(
-        `Delete ALL ${employees.length} employees, every attendance record, and reset settings? The admin account is kept. This cannot be undone.`
+        `Delete ALL ${employees.length} employees, every attendance record, and reset settings? The admin account is kept. ${mode === 'remote' ? 'This deletes it for every device. ' : ''}This cannot be undone.`
       )
     ) {
       resetAll();
@@ -248,8 +260,9 @@ export default function Settings() {
             <span>
               Enable the signup page (/signup)
               <span className={`block text-xs ${muted}`}>
-                Signups are saved in this browser only, so employees must register on the same
-                browser/device the admin uses (for example the kiosk).
+                {mode === 'remote'
+                  ? 'Employees can register from any device; you approve them in Employees.'
+                  : 'Signups are saved in this browser only, so employees must register on the same browser/device the admin uses (for example the kiosk).'}
               </span>
             </span>
           </label>
@@ -378,7 +391,11 @@ export default function Settings() {
 
       <Section
         title="Data"
-        description="Everything lives in this browser's storage. Download a backup regularly."
+        description={
+          mode === 'remote'
+            ? 'Stored in the shared database, so every device sees the same data. A backup is still a good idea.'
+            : "Everything lives in this browser's storage. Download a backup regularly."
+        }
       >
         <div className="flex flex-wrap gap-2">
           <button className={btnSecondary} onClick={backup}>
@@ -388,6 +405,11 @@ export default function Settings() {
             Restore from backup…
             <input type="file" accept="application/json,.json" className="hidden" onChange={restore} />
           </label>
+          {importLocalData && hasLocalData && (
+            <button className={btnSecondary} onClick={handleImportLocal}>
+              Import data saved in this browser
+            </button>
+          )}
           <button className={btnDanger} onClick={handleClear}>
             Clear attendance records
           </button>

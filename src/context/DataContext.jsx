@@ -11,7 +11,7 @@ import {
   workDateOf
 } from '../utils/attendance.js';
 
-const DataContext = createContext(null);
+export const DataContext = createContext(null);
 
 const loadEmployees = () => load(KEYS.employees, []);
 const loadRecords = () => load(KEYS.records, []);
@@ -445,6 +445,7 @@ export function DataProvider({ children }) {
   const employeeById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
 
   const value = {
+    mode: 'local',
     employees,
     records,
     settings,

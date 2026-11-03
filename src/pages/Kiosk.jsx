@@ -100,14 +100,14 @@ export default function Kiosk() {
     return () => clearInterval(t);
   }, []);
 
-  function handleScan(text, source = 'qr') {
+  async function handleScan(text, source = 'qr') {
     if (source === 'qr' || source === 'face') {
       // Ignore the camera re-reading the same code in rapid succession.
       const l = lastScan.current;
       if (l.text === text && Date.now() - l.at < 4000) return;
       lastScan.current = { text, at: Date.now() };
     }
-    const res = recordScan(text, source);
+    const res = await recordScan(text, source);
     if (settings.soundEnabled) beep(res.ok);
     setResult({ ...res, at: Date.now() });
     clearTimeout(clearTimer.current);

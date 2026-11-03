@@ -23,12 +23,14 @@ jobs:
         with:
           node-version: 20
       - name: Install dependencies
-        # npm ci wipes any node_modules that was committed from a Mac and installs the Linux binaries
-        run: npm ci
+        # npm ci wipes any node_modules committed from a Mac; fall back to npm install if the lockfile is behind package.json
+        run: npm ci || npm install
       - name: Build
         run: npm run build
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       - name: SPA fallback for client-side routes
         run: cp dist/index.html dist/404.html
       - uses: actions/upload-pages-artifact@v3

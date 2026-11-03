@@ -207,8 +207,8 @@ export default function Signup() {
     setStep('capture');
   }
 
-  function finish({ photo, faceDescriptors }) {
-    const res = submitSignup({ ...form, photo, faceDescriptors });
+  async function finish({ photo, faceDescriptors }) {
+    const res = await submitSignup({ ...form, photo, faceDescriptors });
     if (!res.ok) {
       setError(res.error);
       setStep('form');
@@ -297,7 +297,7 @@ export default function Signup() {
             <label className="mb-1 block text-sm font-medium">Email</label>
             <input type="email" className={inputCls} value={form.email} onChange={set('email')} />
           </div>
-          {settings.signupCode && (
+          {(settings.signupCode || settings.signupCodeRequired) && (
             <div>
               <label className="mb-1 block text-sm font-medium">Signup code *</label>
               <input className={inputCls} value={form.code} onChange={set('code')} required />

@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MIN_PASSWORD_LENGTH, useAuth } from '../context/AuthContext.jsx';
 import { btnPrimary, cardCls, inputCls, muted } from '../components/ui.jsx';
+import NoAccess from '../components/NoAccess.jsx';
 
 export default function Login() {
-  const { login, setup, needsSetup, expired, isAdmin } = useAuth();
+  const { login, setup, needsSetup, expired, isAdmin, session, mode, noAccess } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || '/admin';
@@ -17,7 +18,8 @@ export default function Login() {
 
   useEffect(() => {
     if (isAdmin) navigate(from, { replace: true });
-  }, [isAdmin, from, navigate]);
+    else if (session) navigate('/scan', { replace: true });
+  }, [isAdmin, session, from, navigate]);
 
   async function submit(e) {
     e.preventDefault();
@@ -32,15 +34,19 @@ export default function Login() {
     if (!res.ok) setError(res.error);
   }
 
+  if (noAccess) return <NoAccess />;
+
   return (
     <div className="flex min-h-[80vh] items-center justify-center px-4">
       <form onSubmit={submit} className={`${cardCls} w-full max-w-sm p-8`}>
         <h1 className="mb-1 text-xl font-bold">
-          {needsSetup ? 'Create admin account' : 'Admin sign in'}
+          {needsSetup ? 'Create admin account' : mode === 'remote' ? 'Sign in' : 'Admin sign in'}
         </h1>
         <p className={`mb-6 text-sm ${muted}`}>
           {needsSetup
             ? 'First run: choose the admin credentials for this device.'
+            : mode === 'remote'
+            ? 'Admins manage everything; kiosk accounts only record scans.'
             : 'Manage employees, attendance and reports.'}
         </p>
 
@@ -55,8 +61,9 @@ export default function Login() {
           </div>
         )}
 
-        <label className="mb-1 block text-sm font-medium">Username</label>
+        <label className="mb-1 block text-sm font-medium">{mode === 'remote' ? 'Email' : 'Username'}</label>
         <input
+          type={mode === 'remote' ? 'email' : 'text'}
           className={`${inputCls} mb-4`}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
