@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DataContext } from './DataContext.jsx';
 import { useAuth } from './AuthContext.jsx';
-import { supabase } from '../lib/supabase.js';
+import { supabase, supabaseHost } from '../lib/supabase.js';
+import { describeLoadError } from '../utils/errorText.js';
 import { DEFAULT_SETTINGS, KEYS, load, normalizeSettings, save } from '../utils/storage.js';
 import { randomHex } from '../utils/crypto.js';
 import { computeScan, makeEmployee, makeManualRecord, rebuildRecord } from '../utils/recordOps.js';
@@ -130,6 +131,7 @@ export default function RemoteDataProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [outboxCount, setOutboxCount] = useState(() => readOutbox().length);
+  const [realtime, setRealtime] = useState('NOT_CONNECTED');
 
   // Always-fresh copy of the data for callbacks (camera scans, long-lived handlers).
   const stateRef = useRef({});
@@ -190,11 +192,13 @@ export default function RemoteDataProvider({ children }) {
         on('schedule_entries', (p) => setSchedule((prev) => applyEntryEvent(prev, p)));
         on('schedule_patterns', (p) => setPatterns((prev) => applyPatternEvent(prev, p)));
         if (admin) on('pending_signups', (p) => applyRow(setPending, M.pendingFromDb, p));
-        ch.subscribe();
+        ch.subscribe((status) => {
+          if (!cancelled) setRealtime(status);
+        });
         channel = ch;
       } catch (e) {
         if (!cancelled) {
-          fail(e, 'Could not load data. Check the connection and that supabase/schema.sql has been run.');
+          fail(e, describeLoadError(e, supabaseHost) || 'Could not load data from the database.');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -662,10 +666,40 @@ export default function RemoteDataProvider({ children }) {
     [fail]
   );
 
+  // A real round trip to the database as the signed-in account: proves the keys, the
+  // schema, the security rules and the role all work, and reports the live-updates state.
+  const testConnection = useCallback(async () => {
+    const started = performance.now();
+    try {
+      const count = async (table) => {
+        const { count: n, error: e } = await supabase
+          .from(table)
+          .select('*', { count: 'exact', head: true });
+        if (e) throw e;
+        return n ?? 0;
+      };
+      const [employeesCount, recordsCount] = await Promise.all([count('employees'), count('attendance_records')]);
+      const fn = await supabase.rpc('get_public_info');
+      if (fn.error) throw fn.error;
+      return {
+        ok: true,
+        ms: Math.round(performance.now() - started),
+        role: auth.role,
+        employees: employeesCount,
+        records: recordsCount,
+        realtime
+      };
+    } catch (e) {
+      return { ok: false, error: describeLoadError(e, supabaseHost) || e?.message || String(e) };
+    }
+  }, [auth.role, realtime]);
+
   const employeeById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
 
   const value = {
     mode: 'remote',
+    realtime,
+    testConnection,
     loading,
     error,
     clearError,

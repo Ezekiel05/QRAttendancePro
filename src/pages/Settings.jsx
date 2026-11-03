@@ -36,7 +36,7 @@ function Field({ label, hint, children }) {
 }
 
 export default function Settings() {
-  const { settings, updateSettings, exportData, importData, clearRecords, resetAll, records, employees, mode, importLocalData, hasLocalData } =
+  const { settings, updateSettings, exportData, importData, clearRecords, resetAll, records, employees, mode, importLocalData, hasLocalData, testConnection } =
     useData();
   const { changePassword, adminUsername } = useAuth();
 
@@ -123,6 +123,16 @@ export default function Settings() {
     } catch {
       setDataMsg('Could not read that file.');
     }
+  }
+
+  async function handleTest() {
+    setDataMsg('Testing the connection…');
+    const r = await testConnection();
+    setDataMsg(
+      r.ok
+        ? `Connected as ${r.role} in ${r.ms} ms. This account can see ${r.employees} employees and ${r.records} attendance records. Live updates: ${r.realtime === 'SUBSCRIBED' ? 'on' : r.realtime}.`
+        : `Connection failed: ${r.error}`
+    );
   }
 
   async function handleImportLocal() {
@@ -405,6 +415,11 @@ export default function Settings() {
             Restore from backup…
             <input type="file" accept="application/json,.json" className="hidden" onChange={restore} />
           </label>
+          {testConnection && (
+            <button className={btnSecondary} onClick={handleTest}>
+              Test database connection
+            </button>
+          )}
           {importLocalData && hasLocalData && (
             <button className={btnSecondary} onClick={handleImportLocal}>
               Import data saved in this browser

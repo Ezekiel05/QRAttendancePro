@@ -13,7 +13,7 @@ const linkCls = ({ isActive }) =>
 
 export default function Navbar() {
   const { isAdmin, logout, session } = useAuth();
-  const { settings } = useData();
+  const { settings, mode } = useData();
   const [dark, toggleTheme] = useTheme();
   const navigate = useNavigate();
 
@@ -64,6 +64,23 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          {session && (
+            <span
+              title={
+                mode === 'remote'
+                  ? 'Connected to the shared database'
+                  : 'Local mode: data is stored in this browser only'
+              }
+              className={`hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium sm:inline-flex ${
+                mode === 'remote'
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                  : 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+              }`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+              {mode === 'remote' ? 'Shared DB' : 'Local only'}
+            </span>
+          )}
           <button
             onClick={toggleTheme}
             aria-label="Toggle dark mode"

@@ -152,6 +152,15 @@ local mode.
 8. Sign in as admin, then Settings -> Data -> **Import data saved in this browser** to bring over what you
    already entered (use it in the browser that holds the data).
 
+**About the URL:** use the project address only (`https://<ref>.supabase.co`). If you paste it with a path such as
+`/rest/v1/`, the app strips the path automatically.
+
+**About the key:** Supabase now calls it the *publishable key* (`sb_publishable_...`, under Project Settings ->
+API Keys). It is a drop-in replacement for the older *anon* key and is safe in a web page: put it in
+`VITE_SUPABASE_PUBLISHABLE_KEY` (or the old `VITE_SUPABASE_ANON_KEY`; the app accepts either, and the publishable
+one wins if both are set). **Never** use the *secret* key (`sb_secret_...` or `service_role`): it bypasses every
+security rule. The app refuses to start the database connection if it detects one and shows a red warning.
+
 **How it behaves**
 - **Roles:** *admin* can do everything; *kiosk* accounts (tablets) can only read employees/schedule and add
   scans. Sign in once on a tablet and it stays signed in. Signed-out visitors can only use the signup page.
@@ -165,6 +174,19 @@ local mode.
   signups; the duplicate-face warning is shown to the admin at approval time.
 - Changing `package.json` dependencies means running `npm install` and committing the updated
   `package-lock.json`.
+
+## Checking that the database works
+
+- The top bar shows **Shared DB** (green) when connected, or **Local only** (amber) when the keys were not found.
+- Settings -> Data -> **Test database connection** does a real round trip as the signed-in account and reports
+  the role, how many employees and records it can see, the response time and whether live updates are on.
+- With `npm run dev`, restart the dev server after creating or editing `.env.local` (it is only read at start-up).
+  In the browser's DevTools -> Network, filter for `supabase`: requests to `/rest/v1/...` should be 200 and
+  a `realtime` WebSocket should connect.
+- Test with two browsers (or a phone via `npm run dev:https`): add an employee in one and it should appear in the
+  other within a couple of seconds.
+- Tip: use a separate Supabase project for testing, with its own keys in `.env.local`, so test data never mixes
+  with real data. The deployed site uses the keys stored as GitHub secrets.
 
 ## QR Generator
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { isRemote } from './lib/supabase.js';
+import { isRemote, keyProblem } from './lib/supabase.js';
 import { DataProvider, useData } from './context/DataContext.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import RemoteAuthProvider from './context/RemoteAuthProvider.jsx';
@@ -55,6 +55,7 @@ function Shell() {
   return (
     <>
       <Navbar />
+      {keyProblem && <div className="bg-red-600 px-4 py-2 text-sm text-white">{keyProblem}</div>}
       {isRemote && <SyncBanner />}
       {isRemote && <InactivityGuard />}
       <main>
