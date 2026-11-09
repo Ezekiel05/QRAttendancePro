@@ -234,8 +234,10 @@ export default function Settings() {
     try {
       setAcctList(await listAllAccounts());
     } catch (err) {
-      if (isMissingFunction(err)) setAcctList('missing');
-      else {
+      if (isMissingFunction(err)) {
+        setAcctList('missing');
+        setAcctMsg(`Details from the database: ${err.message}`);
+      } else {
         setAcctList([]);
         setAcctMsg(`Could not load accounts: ${err.message}`);
       }
@@ -642,7 +644,12 @@ export default function Settings() {
         >
           {acctList === 'missing' ? (
             <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-              Run <b>supabase/schema.sql</b> again in the Supabase SQL Editor to turn on account management.
+              Run <b>supabase/schema.sql</b> again in the Supabase SQL Editor to turn on account management. If you
+              already did, run <code>notify pgrst, 'reload schema';</code> there too, then{' '}
+              <button type="button" className="font-semibold underline" onClick={loadAcctList}>
+                check again
+              </button>
+              .
             </p>
           ) : acctList === null ? (
             <p className={`text-sm ${muted}`}>Loading accounts…</p>

@@ -500,3 +500,6 @@ end $$;
 --
 --   insert into public.app_users (user_id, role)
 --     select id, 'kiosk' from auth.users where email = 'kiosk@example.com';
+
+-- Make the API pick up the new functions straight away.
+notify pgrst, 'reload schema';

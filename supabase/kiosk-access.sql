@@ -300,3 +300,6 @@ grant execute on function public.set_kiosk_code(text)            to authenticate
 grant execute on function public.kiosk_load(text)                to authenticated;
 grant execute on function public.kiosk_record(text, jsonb)       to authenticated;
 grant execute on function public.kiosk_pending_token(text, text) to authenticated;
+
+-- Make the API pick up the new functions straight away.
+notify pgrst, 'reload schema';
