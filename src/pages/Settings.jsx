@@ -42,7 +42,8 @@ function Field({ label, hint, children }) {
 export default function Settings() {
   const { settings, updateSettings, exportData, importData, clearRecords, resetAll, records, employees, mode, importLocalData, hasLocalData, testConnection,
     getKioskAccess, setKioskCode, revokeKioskDevice, revokeAllKioskDevices,
-    listAccounts, setAccountBranch } =
+    listAccounts, setAccountBranch, listAllAccounts, setAccountRole, removeAccountAccess,
+    refreshAccountCount } =
     useData();
   const { changePassword, adminUsername, displayName, email } = useAuth();
 
@@ -60,6 +61,8 @@ export default function Settings() {
   const [branchEdit, setBranchEdit] = useState(null); // { id, name, address } while renaming
   const [branchMsg, setBranchMsg] = useState('');
   const [accounts, setAccounts] = useState(null); // null = loading, 'missing' = SQL not re-run
+  const [acctList, setAcctList] = useState(null); // every login; null = loading, 'missing' = SQL not re-run
+  const [acctMsg, setAcctMsg] = useState('');
 
   useEffect(() => setForm(settings), [settings]);
 
@@ -222,6 +225,64 @@ export default function Settings() {
     } catch (err) {
       setBranchMsg(err.message);
     }
+  }
+
+  const waiting = Array.isArray(acctList) ? acctList.filter((a) => !a.role) : [];
+  const members = Array.isArray(acctList) ? acctList.filter((a) => a.role) : [];
+
+  async function loadAcctList() {
+    try {
+      setAcctList(await listAllAccounts());
+    } catch (err) {
+      if (isMissingFunction(err)) setAcctList('missing');
+      else {
+        setAcctList([]);
+        setAcctMsg(`Could not load accounts: ${err.message}`);
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (listAllAccounts) loadAcctList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listAllAccounts]);
+
+  async function afterAccountChange() {
+    await loadAcctList();
+    if (listAccounts) loadAccounts(); // keep the branch-linking list below in step
+    if (refreshAccountCount) refreshAccountCount();
+  }
+
+  async function giveRole(account, role) {
+    setAcctMsg('');
+    try {
+      const res = await setAccountRole(account.user_id, role);
+      setAcctMsg(
+        res?.ok
+          ? `${account.email} is now ${role === 'admin' ? 'an admin' : 'a kiosk account'}. If they are signed in, they should sign out and back in.`
+          : res?.error || 'Could not change the role.'
+      );
+      await afterAccountChange();
+    } catch (err) {
+      setAcctMsg(err.message);
+    }
+  }
+
+  async function revokeRole(account) {
+    if (!window.confirm(`Remove access for ${account.email}? They can still sign in but will see "No access yet".`)) return;
+    setAcctMsg('');
+    try {
+      const res = await removeAccountAccess(account.user_id);
+      setAcctMsg(res?.ok ? `${account.email} no longer has access.` : res?.error || 'Could not remove access.');
+      await afterAccountChange();
+    } catch (err) {
+      setAcctMsg(err.message);
+    }
+  }
+
+  async function changeBranchHere(userId, branchId) {
+    await changeAccountBranch(userId, branchId);
+    await loadAcctList();
   }
 
   async function loadKiosk() {
@@ -573,6 +634,104 @@ export default function Settings() {
           </div>
         </Section>
       </form>
+
+      {mode === 'remote' && listAllAccounts && (
+        <Section
+          title="Accounts"
+          description="Everyone who can sign in. A login you create in Supabase has no access until you give it a role here. Admins manage everything; kiosk accounts can only record scans."
+        >
+          {acctList === 'missing' ? (
+            <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              Run <b>supabase/schema.sql</b> again in the Supabase SQL Editor to turn on account management.
+            </p>
+          ) : acctList === null ? (
+            <p className={`text-sm ${muted}`}>Loading accounts…</p>
+          ) : (
+            <>
+              {waiting.length > 0 && (
+                <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/20">
+                  <h3 className="mb-2 text-sm font-semibold">Waiting for a role ({waiting.length})</h3>
+                  <ul className="divide-y divide-amber-100 dark:divide-amber-800">
+                    {waiting.map((a) => (
+                      <li key={a.user_id} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{a.email}</div>
+                          <div className={`text-xs ${muted}`}>Created {fmtDateTime(a.created_at)}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button className={btnPrimary} onClick={() => giveRole(a, 'kiosk')}>
+                            Approve as kiosk
+                          </button>
+                          <button className={btnSecondary} onClick={() => giveRole(a, 'admin')}>
+                            Approve as admin
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {members.length === 0 ? (
+                <p className={`text-sm ${muted}`}>No accounts have a role yet.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100 dark:divide-slate-700">
+                  {members.map((a) => (
+                    <li key={a.user_id} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">
+                          {a.display_name || a.email} {a.is_me && <span className={`text-xs ${muted}`}>(you)</span>}
+                        </div>
+                        <div className={`truncate text-xs ${muted}`}>
+                          {a.email} · last sign-in {a.last_sign_in_at ? fmtDateTime(a.last_sign_in_at) : 'never'}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          className={`${inputCls} sm:w-auto`}
+                          value={a.role}
+                          disabled={a.is_me}
+                          onChange={(e) => giveRole(a, e.target.value)}
+                          aria-label={`Role for ${a.email}`}
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="kiosk">Kiosk</option>
+                        </select>
+                        {(settings.branches || []).length > 0 && (
+                          <select
+                            className={`${inputCls} sm:w-auto`}
+                            value={a.branch_id || ''}
+                            onChange={(e) => changeBranchHere(a.user_id, e.target.value)}
+                            aria-label={`Branch for ${a.email}`}
+                          >
+                            <option value="">No branch</option>
+                            {(settings.branches || [])
+                              .filter((b) => b.active !== false || b.id === a.branch_id)
+                              .map((b) => (
+                                <option key={b.id} value={b.id}>
+                                  {b.name}
+                                </option>
+                              ))}
+                          </select>
+                        )}
+                        <button className={btnSecondary} disabled={a.is_me} onClick={() => revokeRole(a)}>
+                          Remove access
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className={`mt-3 text-xs ${muted}`}>
+                Remove access keeps the login but takes its role away. To delete a login completely, use Supabase
+                under Authentication, then Users. You cannot change or remove your own access, and there is always
+                at least one admin.
+              </p>
+            </>
+          )}
+          {acctMsg && <p className={`mt-3 text-sm ${muted}`}>{acctMsg}</p>}
+        </Section>
+      )}
 
       {mode === 'remote' && (
         <Section

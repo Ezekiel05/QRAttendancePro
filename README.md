@@ -245,6 +245,14 @@ The Log flags **Other branch** only when someone signed in somewhere other than 
 day (hover for where), and the kiosk says **Scheduled at ...** if the scan is at a different branch. This needs no
 database change.
 
+## Accounts (approving new logins)
+
+Settings -> **Accounts** lists every login. A login created in Supabase (Authentication -> Users -> Add user) shows
+up under **Waiting for a role**; click **Approve as kiosk** or **Approve as admin**. You can also change a role,
+set a kiosk account's branch, or **Remove access**. A badge on the menu (and on Settings) shows how many logins are
+waiting, checked every minute. You cannot change or remove your own access, and there is always at least one admin.
+Needs `supabase/schema.sql` re-run once. (Employees who used the signup form are approved on the Employees page.)
+
 ## Menu
 
 The top bar is a hamburger menu: **Attendance** (Kiosk, Dashboard, Attendance log, Reports), **People** (Employees,

@@ -30,7 +30,7 @@ function Brand({ settings }) {
 
 export default function Navbar() {
   const { isAdmin, logout, session, displayName } = useAuth();
-  const { settings, mode } = useData();
+  const { settings, mode, pendingAccountCount } = useData();
   const [dark, toggleTheme] = useTheme();
   const [profileOpen, setProfileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -86,11 +86,14 @@ export default function Navbar() {
             aria-label="Open menu"
             aria-expanded={menuOpen}
             aria-controls="main-menu"
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+            className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
           >
             <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
+            {pendingAccountCount > 0 && (
+              <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-amber-500" title="New accounts are waiting for a role" />
+            )}
           </button>
           <Link to="/scan" className="flex min-w-0 items-center gap-2 text-lg font-extrabold">
             <Brand settings={settings} />
@@ -190,6 +193,11 @@ export default function Navbar() {
                         onClick={() => setMenuOpen(false)}
                       >
                         {item.label}
+                        {item.to === '/admin/settings' && pendingAccountCount > 0 && (
+                          <span className="ml-2 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white">
+                            {pendingAccountCount}
+                          </span>
+                        )}
                       </NavLink>
                     ))}
                   </div>

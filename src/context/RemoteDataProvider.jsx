@@ -152,6 +152,7 @@ export default function RemoteDataProvider({ children }) {
   const [kioskMode, setKioskMode] = useState('direct'); // 'direct' | 'device'
   const [needsActivation, setNeedsActivation] = useState(false);
   const [bootKey, setBootKey] = useState(0);
+  const [pendingAccountCount, setPendingAccountCount] = useState(0); // logins waiting for a role
 
   // Always-fresh copy of the data for callbacks (camera scans, long-lived handlers).
   const stateRef = useRef({});
@@ -167,6 +168,12 @@ export default function RemoteDataProvider({ children }) {
     setError(err?.message ? `${fallback} (${err.message})` : fallback);
   }, []);
   const clearError = useCallback(() => setError(''), []);
+
+  // Admin: how many new logins are waiting for a role (shown as a badge on the menu).
+  const refreshAccountCount = useCallback(async () => {
+    const { data, error: e } = await supabase.rpc('list_all_accounts');
+    if (!e) setPendingAccountCount((data || []).filter((a) => !a.role).length);
+  }, []);
 
   const apply = useCallback((d) => {
     setEmployees(d.employees);
@@ -242,6 +249,7 @@ export default function RemoteDataProvider({ children }) {
         const d = await fetchEverything(admin);
         if (cancelled) return;
         apply(d);
+        if (admin) refreshAccountCount();
 
         const ch = supabase.channel('qrap-sync');
         const on = (table, handler) =>
@@ -321,6 +329,13 @@ export default function RemoteDataProvider({ children }) {
     save(OUTBOX_KEY, left);
     setOutboxCount(left.length);
   }, []);
+
+  // Check for new logins waiting for a role every minute (accounts cannot be watched live).
+  useEffect(() => {
+    if (!admin) return undefined;
+    const timer = setInterval(refreshAccountCount, 60000);
+    return () => clearInterval(timer);
+  }, [admin, refreshAccountCount]);
 
   // A kiosk device has no live channel (the server only serves it through functions), so refresh
   // every minute. If its key was revoked or the code changed, go back to the activation screen.
@@ -709,6 +724,25 @@ export default function RemoteDataProvider({ children }) {
     if (e) throw e;
   }, []);
 
+  // Admin: all login accounts, approving them (giving a role) and removing access.
+  const listAllAccounts = useCallback(async () => {
+    const { data, error: e } = await supabase.rpc('list_all_accounts');
+    if (e) throw e;
+    return data || [];
+  }, []);
+
+  const setAccountRole = useCallback(async (userId, role) => {
+    const { data, error: e } = await supabase.rpc('set_account_role', { p_user: userId, p_role: role });
+    if (e) throw e;
+    return data;
+  }, []);
+
+  const removeAccountAccess = useCallback(async (userId) => {
+    const { data, error: e } = await supabase.rpc('remove_account_access', { p_user: userId });
+    if (e) throw e;
+    return data;
+  }, []);
+
   const activateKiosk = useCallback(async (code, label) => {
     try {
       const { data, error: e } = await supabase.rpc('activate_kiosk', { p_code: code, p_label: label });
@@ -848,6 +882,11 @@ export default function RemoteDataProvider({ children }) {
     kioskMode,
     listAccounts,
     setAccountBranch,
+    listAllAccounts,
+    setAccountRole,
+    removeAccountAccess,
+    refreshAccountCount,
+    pendingAccountCount,
     needsActivation,
     activateKiosk,
     getKioskAccess,
